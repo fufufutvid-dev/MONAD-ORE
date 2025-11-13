@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MonadORE - PoW Mining (Ultra Fixed)</title>
+    <title>MonadORE v3 - PoW Mining (WORKING VERSION)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
         * {
@@ -14,10 +14,11 @@
 
         body {
             font-family: 'Courier New', monospace;
-            background: #0a0e27;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
             color: #00ff41;
             overflow-x: hidden;
             position: relative;
+            min-height: 100vh;
         }
 
         #matrix {
@@ -25,7 +26,7 @@
             top: 0;
             left: 0;
             z-index: 0;
-            opacity: 0.15;
+            opacity: 0.12;
         }
 
         .container {
@@ -38,18 +39,25 @@
 
         header {
             border: 2px solid #00ff41;
-            padding: 25px;
+            padding: 30px;
             margin-bottom: 30px;
-            background: rgba(0, 255, 65, 0.03);
-            box-shadow: 0 0 30px rgba(0, 255, 65, 0.3);
+            background: rgba(0, 255, 65, 0.05);
+            box-shadow: 0 0 40px rgba(0, 255, 65, 0.3);
             position: relative;
+            backdrop-filter: blur(10px);
         }
 
         h1 {
-            font-size: 48px;
-            text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
-            letter-spacing: 4px;
+            font-size: 52px;
+            text-shadow: 0 0 15px #00ff41, 0 0 30px #00ff41;
+            letter-spacing: 6px;
             display: inline-block;
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 15px #00ff41, 0 0 30px #00ff41; }
+            50% { text-shadow: 0 0 25px #00ff41, 0 0 50px #00ff41; }
         }
 
         .wallet-btn {
@@ -57,97 +65,117 @@
             background: transparent;
             border: 2px solid #00ff41;
             color: #00ff41;
-            padding: 12px 25px;
+            padding: 14px 28px;
             cursor: pointer;
             font-family: 'Courier New', monospace;
             font-size: 14px;
             transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
         .wallet-btn:hover {
             background: #00ff41;
             color: #0a0e27;
-            box-shadow: 0 0 20px #00ff41;
+            box-shadow: 0 0 25px #00ff41;
+            transform: scale(1.05);
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
 
         .stat-box {
-            border: 1px solid #00ff41;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #00ff41;
+            padding: 25px;
+            background: rgba(0, 0, 0, 0.7);
             position: relative;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
         }
 
         .stat-box::before {
             content: '';
             position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
             background: linear-gradient(45deg, #00ff41, transparent, #00ff41);
             z-index: -1;
             opacity: 0;
             transition: opacity 0.3s;
+            filter: blur(5px);
         }
 
         .stat-box:hover::before {
-            opacity: 1;
+            opacity: 0.7;
+        }
+
+        .stat-box:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(0, 255, 65, 0.4);
         }
 
         .stat-label {
-            font-size: 12px;
-            opacity: 0.7;
-            margin-bottom: 10px;
+            font-size: 11px;
+            opacity: 0.8;
+            margin-bottom: 12px;
+            letter-spacing: 2px;
         }
 
         .stat-value {
-            font-size: 32px;
+            font-size: 36px;
             font-weight: bold;
-            text-shadow: 0 0 10px #00ff41;
+            text-shadow: 0 0 12px #00ff41;
+            margin-bottom: 5px;
         }
 
         .mining-zone {
             border: 2px solid #00ff41;
             padding: 40px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             margin-bottom: 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 65, 0.2);
+            backdrop-filter: blur(10px);
         }
 
         .terminal {
             background: #000;
-            border: 1px solid #00ff41;
+            border: 2px solid #00ff41;
             padding: 20px;
-            min-height: 200px;
+            min-height: 250px;
             margin-bottom: 20px;
             font-size: 13px;
             overflow-y: auto;
-            max-height: 400px;
+            max-height: 450px;
+            box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.1);
         }
 
         .terminal-line {
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             word-break: break-word;
+            line-height: 1.4;
         }
 
         .terminal-line::before {
-            content: '> ';
+            content: '▸ ';
             color: #00ff41;
+            font-weight: bold;
         }
 
         .terminal-line.success {
             color: #00ff41;
             font-weight: bold;
+            text-shadow: 0 0 5px #00ff41;
         }
 
         .terminal-line.error {
             color: #ff4136;
+            font-weight: bold;
         }
 
         .terminal-line.warning {
@@ -166,7 +194,7 @@
         }
 
         .btn {
-            padding: 20px;
+            padding: 22px;
             background: transparent;
             border: 2px solid #00ff41;
             color: #00ff41;
@@ -175,14 +203,15 @@
             cursor: pointer;
             transition: all 0.3s;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 3px;
+            font-weight: bold;
         }
 
         .btn:hover:not(:disabled) {
             background: #00ff41;
             color: #0a0e27;
-            box-shadow: 0 0 30px #00ff41;
-            transform: translateY(-2px);
+            box-shadow: 0 0 35px #00ff41;
+            transform: translateY(-3px);
         }
 
         .btn:disabled {
@@ -191,23 +220,49 @@
         }
 
         .btn.mining {
-            animation: pulse 1s infinite;
-            background: rgba(0, 255, 65, 0.1);
+            animation: pulse 1.5s infinite;
+            background: rgba(0, 255, 65, 0.15);
+            border-width: 3px;
         }
 
         @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 20px #00ff41; }
-            50% { box-shadow: 0 0 40px #00ff41; }
+            0%, 100% { 
+                box-shadow: 0 0 20px #00ff41;
+                border-color: #00ff41;
+            }
+            50% { 
+                box-shadow: 0 0 50px #00ff41;
+                border-color: #00ffaa;
+            }
         }
 
         .hashrate-display {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
             gap: 15px;
             margin-bottom: 20px;
-            padding: 15px;
-            background: rgba(0, 255, 65, 0.05);
-            border-left: 3px solid #00ff41;
+            padding: 20px;
+            background: rgba(0, 255, 65, 0.08);
+            border-left: 4px solid #00ff41;
+            backdrop-filter: blur(5px);
+        }
+
+        .hashrate-item {
+            text-align: center;
+        }
+
+        .hashrate-item strong {
+            display: block;
+            font-size: 11px;
+            opacity: 0.8;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .hashrate-item span {
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ff41;
         }
 
         .info-section {
@@ -217,47 +272,52 @@
         }
 
         .info-box {
-            border: 1px solid #00ff41;
-            padding: 25px;
-            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #00ff41;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
         }
 
         .info-box h3 {
-            margin-bottom: 15px;
-            font-size: 20px;
+            margin-bottom: 20px;
+            font-size: 22px;
+            text-shadow: 0 0 10px #00ff41;
         }
 
         .info-item {
-            margin-bottom: 12px;
-            padding-left: 15px;
-            border-left: 2px solid #00ff41;
+            margin-bottom: 15px;
+            padding-left: 18px;
+            border-left: 3px solid #00ff41;
+            line-height: 1.6;
         }
 
         footer {
             text-align: center;
-            padding: 30px;
-            border-top: 1px solid #00ff41;
+            padding: 40px;
+            border-top: 2px solid #00ff41;
             margin-top: 50px;
-            opacity: 0.7;
+            opacity: 0.8;
         }
 
         footer a {
             color: #00ff41;
             text-decoration: none;
-            text-shadow: 0 0 5px #00ff41;
+            text-shadow: 0 0 8px #00ff41;
+            transition: all 0.3s;
         }
 
         footer a:hover {
-            text-shadow: 0 0 15px #00ff41;
+            text-shadow: 0 0 20px #00ff41;
+            letter-spacing: 2px;
         }
 
         .scan-line {
             position: fixed;
             width: 100%;
-            height: 2px;
-            background: rgba(0, 255, 65, 0.5);
-            box-shadow: 0 0 10px #00ff41;
-            animation: scan 4s linear infinite;
+            height: 3px;
+            background: rgba(0, 255, 65, 0.6);
+            box-shadow: 0 0 15px #00ff41;
+            animation: scan 5s linear infinite;
             z-index: 9999;
             pointer-events: none;
         }
@@ -276,28 +336,23 @@
                 grid-template-columns: 1fr;
             }
             
+            .hashrate-display {
+                grid-template-columns: 1fr 1fr;
+            }
+            
             h1 {
-                font-size: 32px;
+                font-size: 36px;
             }
             
             .wallet-btn {
                 float: none;
                 display: block;
-                margin-top: 15px;
+                margin-top: 20px;
             }
         }
 
-        .blink {
-            animation: blink 1s infinite;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
-        }
-
         .stop-btn {
-            background: rgba(255, 65, 54, 0.1);
+            background: rgba(255, 65, 54, 0.15);
             border-color: #ff4136;
             color: #ff4136;
         }
@@ -305,7 +360,24 @@
         .stop-btn:hover:not(:disabled) {
             background: #ff4136;
             color: #0a0e27;
-            box-shadow: 0 0 30px #ff4136;
+            box-shadow: 0 0 35px #ff4136;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(0, 255, 65, 0.1);
+            margin-top: 15px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff41, #00ffaa);
+            width: 0%;
+            transition: width 0.3s;
+            box-shadow: 0 0 10px #00ff41;
         }
     </style>
 </head>
@@ -315,10 +387,10 @@
 
     <div class="container">
         <header>
-            <h1>MONADORE</h1>
+            <h1>⛏️ MONADORE</h1>
             <button class="wallet-btn" onclick="connectWallet()">CONNECT WALLET</button>
-            <div style="clear: both; margin-top: 15px;">
-                <small>PROOF-OF-WORK MINING PROTOCOL v2.1 ULTRA FIXED</small>
+            <div style="clear: both; margin-top: 20px;">
+                <small>PROOF-OF-WORK MINING PROTOCOL v3.0 - FULLY WORKING</small>
             </div>
         </header>
 
@@ -337,6 +409,9 @@
                 <div class="stat-label">TOTAL MINED</div>
                 <div class="stat-value" id="totalSupply">0.00</div>
                 <div class="stat-label">/ 21M ORE</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">DIFFICULTY</div>
@@ -346,36 +421,45 @@
         </div>
 
         <div class="mining-zone">
-            <h2 style="margin-bottom: 20px;">&gt;&gt; MINING TERMINAL</h2>
+            <h2 style="margin-bottom: 25px; text-shadow: 0 0 10px #00ff41;">⚡ MINING TERMINAL</h2>
             
             <div class="hashrate-display">
-                <div>
-                    <strong>ATTEMPTS:</strong> <span id="hashcount">0</span>
+                <div class="hashrate-item">
+                    <strong>ATTEMPTS</strong>
+                    <span id="hashcount">0</span>
                 </div>
-                <div>
-                    <strong>TESTED:</strong> <span id="testedcount">0</span>
+                <div class="hashrate-item">
+                    <strong>VALID FOUND</strong>
+                    <span id="validcount" style="color: #00ffaa;">0</span>
                 </div>
-                <div>
-                    <strong>COOLDOWN:</strong> <span id="cooldown" class="blink">READY</span>
+                <div class="hashrate-item">
+                    <strong>HASHRATE</strong>
+                    <span id="hashrate">0 H/s</span>
+                </div>
+                <div class="hashrate-item">
+                    <strong>COOLDOWN</strong>
+                    <span id="cooldown">READY</span>
                 </div>
             </div>
 
             <div class="terminal" id="terminal">
-                <div class="terminal-line info">MonadORE Mining System v2.1 - ULTRA FIXED</div>
+                <div class="terminal-line info">┌─ MonadORE Mining System v3.0 ─┐</div>
+                <div class="terminal-line info">│ Fully Working Version          │</div>
+                <div class="terminal-line info">└────────────────────────────────┘</div>
                 <div class="terminal-line">System initialized...</div>
                 <div class="terminal-line">Awaiting wallet connection...</div>
             </div>
 
             <div class="controls">
-                <button class="btn" id="mineBtn" onclick="startMining()" disabled>START MINING</button>
-                <button class="btn stop-btn" id="stopBtn" onclick="stopMining()" style="display:none;">STOP MINING</button>
-                <button class="btn" id="claimBtn" onclick="claimRewards()" disabled>CLAIM REWARDS</button>
+                <button class="btn" id="mineBtn" onclick="startMining()" disabled>⛏️ START MINING</button>
+                <button class="btn stop-btn" id="stopBtn" onclick="stopMining()" style="display:none;">⏹️ STOP MINING</button>
+                <button class="btn" id="claimBtn" onclick="claimRewards()" disabled>💰 CLAIM REWARDS</button>
             </div>
         </div>
 
         <div class="info-section">
             <div class="info-box">
-                <h3>&gt; PROTOCOL INFO</h3>
+                <h3>▸ PROTOCOL INFO</h3>
                 <div class="info-item">
                     <strong>CONTRACT:</strong><br>
                     <small style="word-break: break-all;">0xcCd8f63Ca88562399bB423d277B15E5701BD6743</small>
@@ -395,34 +479,42 @@
                 <div class="info-item">
                     <strong>MIN INTERVAL:</strong> 10 seconds
                 </div>
+                <div class="info-item">
+                    <strong>MAX SUPPLY:</strong> 21,000,000 ORE
+                </div>
             </div>
 
             <div class="info-box">
-                <h3>&gt; HOW IT WORKS</h3>
+                <h3>▸ HOW IT WORKS</h3>
                 <div class="info-item">
-                    [1] Connect MetaMask to Monad Testnet
+                    <strong>[1]</strong> Connect MetaMask to Monad Testnet
                 </div>
                 <div class="info-item">
-                    [2] Click START MINING
+                    <strong>[2]</strong> Click START MINING
                 </div>
                 <div class="info-item">
-                    [3] System tests nonces with contract BEFORE submitting
+                    <strong>[3]</strong> Miner finds valid nonces locally
                 </div>
                 <div class="info-item">
-                    [4] Only verified-valid nonces are submitted
+                    <strong>[4]</strong> Only valid nonces submitted to blockchain
                 </div>
                 <div class="info-item">
-                    [5] Claim rewards after successful mines
+                    <strong>[5]</strong> Earn ORE tokens for successful mining
                 </div>
-                <div class="info-item" style="margin-top: 15px; color: #ffdc00;">
-                    ⚠ Uses contract testNonce() to validate before submission!
+                <div class="info-item">
+                    <strong>[6]</strong> Claim your rewards anytime
+                </div>
+                <div class="info-item" style="margin-top: 20px; color: #00ffaa; border-left-color: #00ffaa;">
+                    ✓ Optimized mining algorithm<br>
+                    ✓ Better nonce generation<br>
+                    ✓ Fixed hash validation
                 </div>
             </div>
         </div>
 
         <footer>
-            <p>CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
-            <p style="margin-top: 10px; font-size: 12px;">MONADORE v2.1 - ULTRA STABLE</p>
+            <p style="font-size: 18px; margin-bottom: 10px;">CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
+            <p style="margin-top: 15px; font-size: 12px; opacity: 0.7;">MONADORE v3.0 - FULLY WORKING VERSION</p>
         </footer>
     </div>
 
@@ -445,23 +537,26 @@
         let account = null;
         let mining = false;
         let attemptCount = 0;
-        let testedCount = 0;
+        let validCount = 0;
         let currentDifficulty = 0;
         let provider = null;
         let contract = null;
+        let currentBlockNumber = 0;
+        let hashrateInterval = null;
+        let lastAttemptCount = 0;
 
-        // Matrix background animation
+        // Matrix background
         const canvas = document.getElementById('matrix');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        const chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const chars = '01ⓞⓡⓔ⛏️';
         const fontSize = 14;
         const columns = canvas.width / fontSize;
         const drops = [];
         for (let i = 0; i < Math.floor(columns); i++) {
-            drops[i] = 1;
+            drops[i] = Math.floor(Math.random() * -100);
         }
 
         function drawMatrix() {
@@ -480,7 +575,7 @@
                 drops[i]++;
             }
         }
-        setInterval(drawMatrix, 33);
+        setInterval(drawMatrix, 35);
 
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
@@ -501,7 +596,7 @@
             terminal.appendChild(line);
             terminal.scrollTop = terminal.scrollHeight;
             
-            while (terminal.children.length > 100) {
+            while (terminal.children.length > 150) {
                 terminal.removeChild(terminal.firstChild);
             }
         }
@@ -509,17 +604,17 @@
         async function connectWallet() {
             try {
                 if (typeof window.ethereum === 'undefined') {
-                    log('ERROR: MetaMask not detected!', 'error');
+                    log('❌ MetaMask not detected!', 'error');
                     alert('Please install MetaMask extension');
                     return;
                 }
 
-                log('Requesting wallet connection...', 'info');
+                log('🔌 Requesting wallet connection...', 'info');
                 const accounts = await window.ethereum.request({
                     method: 'eth_requestAccounts'
                 });
 
-                log('Switching to Monad Testnet...', 'info');
+                log('🌐 Switching to Monad Testnet...', 'info');
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
@@ -527,27 +622,22 @@
                     });
                 } catch (switchError) {
                     if (switchError.code === 4902) {
-                        log('Adding Monad Testnet to MetaMask...', 'warning');
-                        try {
-                            await window.ethereum.request({
-                                method: 'wallet_addEthereumChain',
-                                params: [{
-                                    chainId: '0x279F',
-                                    chainName: 'Monad Testnet',
-                                    nativeCurrency: { 
-                                        name: 'MON', 
-                                        symbol: 'MON', 
-                                        decimals: 18 
-                                    },
-                                    rpcUrls: [RPC_URL],
-                                    blockExplorerUrls: ['https://explorer.testnet.monad.xyz']
-                                }]
-                            });
-                            log('Monad Testnet added successfully!', 'success');
-                        } catch (addError) {
-                            log('ERROR: Failed to add Monad network', 'error');
-                            return;
-                        }
+                        log('➕ Adding Monad Testnet...', 'warning');
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x279F',
+                                chainName: 'Monad Testnet',
+                                nativeCurrency: { 
+                                    name: 'MON', 
+                                    symbol: 'MON', 
+                                    decimals: 18 
+                                },
+                                rpcUrls: [RPC_URL],
+                                blockExplorerUrls: ['https://explorer.testnet.monad.xyz']
+                            }]
+                        });
+                        log('✓ Monad Testnet added!', 'success');
                     } else {
                         throw switchError;
                     }
@@ -557,18 +647,22 @@
                 provider = new ethers.providers.Web3Provider(window.ethereum);
                 contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
                 
+                // Get current block number
+                currentBlockNumber = await provider.getBlockNumber();
+                
                 document.querySelector('.wallet-btn').textContent = 
-                    account.slice(0, 6) + '...' + account.slice(-4);
-                log('Wallet connected: ' + account, 'success');
+                    '🔗 ' + account.slice(0, 6) + '...' + account.slice(-4);
+                log('✓ Wallet connected: ' + account, 'success');
+                log('📦 Current block: ' + currentBlockNumber, 'info');
                 
                 document.getElementById('mineBtn').disabled = false;
                 
                 await loadData();
-                setInterval(loadData, 5000);
+                setInterval(loadData, 3000);
                 
-                log('System ready! Click START MINING to begin.', 'success');
+                log('✓ System ready! Click START MINING.', 'success');
             } catch (error) {
-                log('ERROR: ' + error.message, 'error');
+                log('❌ ERROR: ' + error.message, 'error');
                 console.error(error);
             }
         }
@@ -577,17 +671,25 @@
             if (!account || !contract) return;
             
             try {
-                const [minerInfo, stats] = await Promise.all([
+                const [minerInfo, stats, blockNum] = await Promise.all([
                     contract.getMinerInfo(account),
-                    contract.getStats()
+                    contract.getStats(),
+                    provider.getBlockNumber()
                 ]);
+
+                currentBlockNumber = blockNum;
 
                 document.getElementById('balance').textContent = 
                     parseFloat(ethers.utils.formatEther(minerInfo[0])).toFixed(4);
                 document.getElementById('unclaimed').textContent = 
                     parseFloat(ethers.utils.formatEther(minerInfo[1])).toFixed(4);
-                document.getElementById('totalSupply').textContent = 
-                    parseFloat(ethers.utils.formatEther(stats[0])).toFixed(2);
+                
+                const supply = parseFloat(ethers.utils.formatEther(stats[0]));
+                document.getElementById('totalSupply').textContent = supply.toFixed(2);
+                
+                // Update progress bar
+                const progress = (supply / 21000000) * 100;
+                document.getElementById('progressFill').style.width = progress + '%';
                 
                 currentDifficulty = stats[1].toNumber();
                 document.getElementById('difficulty').textContent = currentDifficulty;
@@ -598,11 +700,13 @@
                 
                 if (cooldown > 0) {
                     document.getElementById('cooldown').textContent = cooldown + 's';
+                    document.getElementById('cooldown').style.color = '#ff4136';
                     if (!mining) {
                         document.getElementById('mineBtn').disabled = true;
                     }
                 } else {
                     document.getElementById('cooldown').textContent = 'READY';
+                    document.getElementById('cooldown').style.color = '#00ff41';
                     if (!mining) {
                         document.getElementById('mineBtn').disabled = false;
                     }
@@ -615,151 +719,208 @@
             }
         }
 
+        // Calculate leading zeros in a hash (client-side verification)
+        function countLeadingZeros(hash) {
+            let count = 0;
+            const hashStr = hash.slice(2); // Remove '0x'
+            for (let i = 0; i < hashStr.length; i++) {
+                if (hashStr[i] === '0') {
+                    count++;
+                } else {
+                    break;
+                }
+            }
+            return count;
+        }
+
         async function startMining() {
             if (!account || !contract) {
-                log('ERROR: Please connect wallet first', 'error');
+                log('❌ Please connect wallet first', 'error');
                 return;
             }
 
             if (currentDifficulty === 0) {
-                log('ERROR: Difficulty not loaded. Please wait...', 'error');
+                log('❌ Difficulty not loaded. Please wait...', 'error');
                 return;
             }
 
             mining = true;
             attemptCount = 0;
-            testedCount = 0;
+            validCount = 0;
+            lastAttemptCount = 0;
             
             document.getElementById('mineBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'block';
-            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('mineBtn').classList.add('mining');
             document.getElementById('claimBtn').disabled = true;
             
-            log('=== MINING STARTED ===', 'success');
-            log('Target difficulty: ' + currentDifficulty + ' leading zero nibbles', 'info');
-            log('Using contract testNonce() for validation...', 'info');
+            // Start hashrate counter
+            hashrateInterval = setInterval(() => {
+                const hashrate = attemptCount - lastAttemptCount;
+                document.getElementById('hashrate').textContent = hashrate + ' H/s';
+                lastAttemptCount = attemptCount;
+            }, 1000);
+            
+            log('═══════════════════════════════', 'success');
+            log('⛏️  MINING STARTED', 'success');
+            log('═══════════════════════════════', 'success');
+            log('🎯 Target: ' + currentDifficulty + ' leading zeros', 'info');
+            log('📦 Block: ' + currentBlockNumber, 'info');
 
             try {
                 const signer = provider.getSigner();
                 const contractWithSigner = contract.connect(signer);
 
                 while (mining) {
-                    // Generate random nonce with better distribution
-                    const nonce = ethers.BigNumber.from(
-                        ethers.utils.randomBytes(32)
-                    ).mod(ethers.BigNumber.from("0xFFFFFFFFFFFFFFFF"));
+                    // Generate truly random nonce
+                    const nonce = ethers.BigNumber.from(ethers.utils.randomBytes(32));
                     
                     attemptCount++;
-                    document.getElementById('hashcount').textContent = attemptCount;
+                    document.getElementById('hashcount').textContent = attemptCount.toLocaleString();
                     
-                    try {
-                        // Test nonce with contract FIRST (read-only, no gas)
-                        const [isValid, hash] = await contract.testNonce(nonce);
+                    // Calculate hash locally (same as contract)
+                    const hash = ethers.utils.keccak256(
+                        ethers.utils.defaultAbiCoder.encode(
+                            ['address', 'uint256', 'uint256'],
+                            [account, nonce, currentBlockNumber]
+                        )
+                    );
+                    
+                    const leadingZeros = countLeadingZeros(hash);
+                    
+                    // Check if valid
+                    if (leadingZeros >= currentDifficulty) {
+                        validCount++;
+                        document.getElementById('validcount').textContent = validCount;
                         
-                        testedCount++;
-                        document.getElementById('testedcount').textContent = testedCount;
+                        log('═══════════════════════════════', 'success');
+                        log('✨ VALID NONCE FOUND!', 'success');
+                        log('═══════════════════════════════', 'success');
+                        log('🎲 Nonce: ' + nonce.toString(), 'info');
+                        log('🔐 Hash: ' + hash.slice(0, 20) + '...', 'info');
+                        log('⚡ Zeros: ' + leadingZeros, 'success');
+                        log('📤 Submitting to blockchain...', 'warning');
                         
-                        if (isValid) {
-                            log('✓ VALID NONCE FOUND!', 'success');
-                            log('Nonce: ' + nonce.toString(), 'info');
-                            log('Hash: ' + hash.slice(0, 20) + '...', 'info');
-                            log('Submitting transaction...', 'warning');
+                        try {
+                            // Estimate gas
+                            const gasEstimate = await contractWithSigner.estimateGas.mine(nonce);
+                            const gasLimit = gasEstimate.mul(150).div(100); // 50% buffer
                             
-                            try {
-                                // Estimate gas first
-                                const gasEstimate = await contractWithSigner.estimateGas.mine(nonce);
-                                const gasLimit = gasEstimate.mul(120).div(100); // 20% buffer
+                            log('⛽ Gas estimate: ' + gasEstimate.toString(), 'info');
+                            
+                            // Submit transaction
+                            const tx = await contractWithSigner.mine(nonce, { 
+                                gasLimit: gasLimit
+                            });
+                            
+                            log('📨 TX sent: ' + tx.hash.slice(0, 20) + '...', 'warning');
+                            log('⏳ Waiting for confirmation...', 'warning');
+                            
+                            const receipt = await tx.wait();
+                            
+                            if (receipt.status === 1) {
+                                log('═══════════════════════════════', 'success');
+                                log('🎉 MINING SUCCESS!', 'success');
+                                log('═══════════════════════════════', 'success');
+                                log('✓ Block mined!', 'success');
+                                log('⛽ Gas used: ' + receipt.gasUsed.toString(), 'info');
+                                log('🔗 TX: ' + receipt.transactionHash.slice(0, 20) + '...', 'success');
+                                log('💰 Rewards added to your balance!', 'success');
                                 
-                                log('Gas estimate: ' + gasEstimate.toString(), 'info');
+                                mining = false;
+                                if (hashrateInterval) clearInterval(hashrateInterval);
+                                document.getElementById('mineBtn').style.display = 'block';
+                                document.getElementById('stopBtn').style.display = 'none';
+                                document.getElementById('mineBtn').classList.remove('mining');
+                                document.getElementById('claimBtn').disabled = false;
                                 
-                                // Submit with proper gas
-                                const tx = await contractWithSigner.mine(nonce, { 
-                                    gasLimit: gasLimit
-                                });
-                                
-                                log('TX submitted: ' + tx.hash, 'warning');
-                                log('Waiting for confirmation...', 'warning');
-                                
-                                const receipt = await tx.wait();
-                                
-                                if (receipt.status === 1) {
-                                    log('=== MINING SUCCESS! ===', 'success');
-                                    log('Block mined! Gas used: ' + receipt.gasUsed.toString(), 'success');
-                                    log('TX: ' + receipt.transactionHash, 'success');
-                                    log('Rewards added to your balance!', 'success');
-                                    
-                                    mining = false;
-                                    document.getElementById('mineBtn').style.display = 'block';
-                                    document.getElementById('stopBtn').style.display = 'none';
-                                    document.getElementById('claimBtn').disabled = false;
-                                    
-                                    await loadData();
-                                    return;
-                                } else {
-                                    log('TX failed with status 0', 'error');
-                                }
-                                
-                            } catch (txError) {
-                                if (txError.message.includes('user rejected') || txError.code === 4001) {
-                                    log('Transaction rejected by user', 'error');
-                                    mining = false;
-                                    document.getElementById('mineBtn').style.display = 'block';
-                                    document.getElementById('stopBtn').style.display = 'none';
-                                    return;
-                                }
-                                
-                                if (txError.message.includes('Mining too fast')) {
-                                    log('Cooldown active - stopping...', 'warning');
-                                    mining = false;
-                                    document.getElementById('mineBtn').style.display = 'block';
-                                    document.getElementById('stopBtn').style.display = 'none';
-                                    await loadData();
-                                    return;
-                                }
-                                
-                                log('TX Error: ' + txError.message.substring(0, 100), 'error');
+                                await loadData();
+                                return;
+                            } else {
+                                log('❌ TX failed with status 0', 'error');
+                            }
+                            
+                        } catch (txError) {
+                            if (txError.message.includes('user rejected') || txError.code === 4001) {
+                                log('❌ Transaction rejected by user', 'error');
+                                mining = false;
+                                if (hashrateInterval) clearInterval(hashrateInterval);
+                                document.getElementById('mineBtn').style.display = 'block';
+                                document.getElementById('stopBtn').style.display = 'none';
+                                document.getElementById('mineBtn').classList.remove('mining');
+                                return;
+                            }
+                            
+                            if (txError.message.includes('Mining too fast')) {
+                                log('⏰ Cooldown active - waiting...', 'warning');
+                                mining = false;
+                                if (hashrateInterval) clearInterval(hashrateInterval);
+                                document.getElementById('mineBtn').style.display = 'block';
+                                document.getElementById('stopBtn').style.display = 'none';
+                                document.getElementById('mineBtn').classList.remove('mining');
+                                await loadData();
+                                return;
+                            }
+                            
+                            if (txError.message.includes('Hash already used')) {
+                                log('⚠️  Hash collision - continuing...', 'warning');
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            } else {
+                                log('❌ TX Error: ' + txError.message.substring(0, 100), 'error');
                                 await new Promise(resolve => setTimeout(resolve, 2000));
                             }
                         }
-                        
-                    } catch (testError) {
-                        log('Test error: ' + testError.message.substring(0, 80), 'error');
-                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                     
-                    // Progress log every 500 attempts
+                    // Progress log every 1000 attempts
+                    if (attemptCount % 1000 === 0) {
+                        log('⏳ Progress: ' + attemptCount.toLocaleString() + ' attempts, ' + validCount + ' valid found', 'info');
+                    }
+                    
+                    // Prevent browser freeze - yield every 100 attempts
+                    if (attemptCount % 100 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1));
+                    }
+                    
+                    // Update block number every 500 attempts
                     if (attemptCount % 500 === 0) {
-                        log('Progress: ' + attemptCount + ' attempts, ' + testedCount + ' tested', 'info');
-                    }
-                    
-                    // Prevent browser freeze
-                    if (attemptCount % 50 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                        try {
+                            currentBlockNumber = await provider.getBlockNumber();
+                        } catch (e) {
+                            console.error('Block number update failed:', e);
+                        }
                     }
                 }
             } catch (error) {
-                log('CRITICAL ERROR: ' + error.message, 'error');
+                log('❌ CRITICAL ERROR: ' + error.message, 'error');
                 console.error(error);
                 mining = false;
+                if (hashrateInterval) clearInterval(hashrateInterval);
                 document.getElementById('mineBtn').style.display = 'block';
                 document.getElementById('stopBtn').style.display = 'none';
+                document.getElementById('mineBtn').classList.remove('mining');
             }
         }
 
         function stopMining() {
             mining = false;
+            if (hashrateInterval) clearInterval(hashrateInterval);
             document.getElementById('mineBtn').style.display = 'block';
             document.getElementById('stopBtn').style.display = 'none';
-            log('=== MINING STOPPED ===', 'warning');
-            log('Total attempts: ' + attemptCount, 'info');
-            log('Tested with contract: ' + testedCount, 'info');
+            document.getElementById('mineBtn').classList.remove('mining');
+            document.getElementById('hashrate').textContent = '0 H/s';
+            log('═══════════════════════════════', 'warning');
+            log('⏹️  MINING STOPPED', 'warning');
+            log('═══════════════════════════════', 'warning');
+            log('📊 Total attempts: ' + attemptCount.toLocaleString(), 'info');
+            log('✓ Valid nonces found: ' + validCount, 'info');
         }
 
         async function claimRewards() {
             if (!account || !contract) return;
             
             document.getElementById('claimBtn').disabled = true;
-            log('Claiming rewards...', 'warning');
+            log('💰 Claiming rewards...', 'warning');
 
             try {
                 const signer = provider.getSigner();
@@ -770,15 +931,18 @@
                     gasLimit: gasEstimate.mul(120).div(100) 
                 });
                 
-                log('TX sent: ' + tx.hash, 'warning');
+                log('📨 TX sent: ' + tx.hash.slice(0, 20) + '...', 'warning');
                 
                 const receipt = await tx.wait();
-                log('=== REWARDS CLAIMED! ===', 'success');
-                log('Gas used: ' + receipt.gasUsed.toString(), 'info');
+                log('═══════════════════════════════', 'success');
+                log('✨ REWARDS CLAIMED!', 'success');
+                log('═══════════════════════════════', 'success');
+                log('⛽ Gas used: ' + receipt.gasUsed.toString(), 'info');
+                log('💎 Check your balance!', 'success');
                 
                 await loadData();
             } catch (error) {
-                log('ERROR: ' + error.message, 'error');
+                log('❌ ERROR: ' + error.message, 'error');
                 document.getElementById('claimBtn').disabled = false;
             }
         }
@@ -786,7 +950,7 @@
         // Auto-connect if wallet is already connected
         window.addEventListener('load', () => {
             if (window.ethereum && window.ethereum.selectedAddress) {
-                connectWallet();
+                setTimeout(connectWallet, 500);
             }
         });
 
@@ -794,17 +958,17 @@
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', (accounts) => {
                 if (accounts.length === 0) {
-                    log('Wallet disconnected', 'warning');
-                    location.reload();
+                    log('🔌 Wallet disconnected', 'warning');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    log('Account changed, reloading...', 'info');
-                    location.reload();
+                    log('🔄 Account changed, reloading...', 'info');
+                    setTimeout(() => location.reload(), 1000);
                 }
             });
 
             window.ethereum.on('chainChanged', () => {
-                log('Network changed, reloading...', 'info');
-                location.reload();
+                log('🌐 Network changed, reloading...', 'info');
+                setTimeout(() => location.reload(), 1000);
             });
         }
     </script>
