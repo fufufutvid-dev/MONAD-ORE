@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MonadORE - PoW Mining (Fixed)</title>
+    <title>MonadORE - PoW Mining (Ultra Fixed)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <style>
         * {
@@ -318,7 +318,7 @@
             <h1>MONADORE</h1>
             <button class="wallet-btn" onclick="connectWallet()">CONNECT WALLET</button>
             <div style="clear: both; margin-top: 15px;">
-                <small>PROOF-OF-WORK MINING PROTOCOL v2</small>
+                <small>PROOF-OF-WORK MINING PROTOCOL v2.1 ULTRA FIXED</small>
             </div>
         </header>
 
@@ -353,7 +353,7 @@
                     <strong>ATTEMPTS:</strong> <span id="hashcount">0</span>
                 </div>
                 <div>
-                    <strong>VALID HASHES:</strong> <span id="validcount">0</span>
+                    <strong>TESTED:</strong> <span id="testedcount">0</span>
                 </div>
                 <div>
                     <strong>COOLDOWN:</strong> <span id="cooldown" class="blink">READY</span>
@@ -361,7 +361,7 @@
             </div>
 
             <div class="terminal" id="terminal">
-                <div class="terminal-line info">MonadORE Mining System v2 - FIXED VERSION</div>
+                <div class="terminal-line info">MonadORE Mining System v2.1 - ULTRA FIXED</div>
                 <div class="terminal-line">System initialized...</div>
                 <div class="terminal-line">Awaiting wallet connection...</div>
             </div>
@@ -403,26 +403,26 @@
                     [1] Connect MetaMask to Monad Testnet
                 </div>
                 <div class="info-item">
-                    [2] Click START MINING - system will find valid nonces locally
+                    [2] Click START MINING
                 </div>
                 <div class="info-item">
-                    [3] Valid nonces are submitted to contract for verification
+                    [3] System tests nonces with contract BEFORE submitting
                 </div>
                 <div class="info-item">
-                    [4] Wait 10 seconds between successful mines
+                    [4] Only verified-valid nonces are submitted
                 </div>
                 <div class="info-item">
-                    [5] Claim your accumulated rewards anytime
+                    [5] Claim rewards after successful mines
                 </div>
                 <div class="info-item" style="margin-top: 15px; color: #ffdc00;">
-                    ⚠ Only successful mining submissions cost gas. Failed attempts are free!
+                    ⚠ Uses contract testNonce() to validate before submission!
                 </div>
             </div>
         </div>
 
         <footer>
             <p>CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
-            <p style="margin-top: 10px; font-size: 12px;">MONADORE v2.0 - FIXED MINING SYSTEM</p>
+            <p style="margin-top: 10px; font-size: 12px;">MONADORE v2.1 - ULTRA STABLE</p>
         </footer>
     </div>
 
@@ -438,13 +438,14 @@
             "function getStats() external view returns (uint256 supply, uint256 diff, uint256 reward, uint256 maxSupply)",
             "function totalSupply() external view returns (uint256)",
             "function difficulty() external view returns (uint256)",
-            "function testNonce(uint256 nonce) external view returns (bool, bytes32)"
+            "function testNonce(uint256 nonce) external view returns (bool, bytes32)",
+            "function validHash(bytes32 hash) external view returns (bool)"
         ];
 
         let account = null;
         let mining = false;
         let attemptCount = 0;
-        let validCount = 0;
+        let testedCount = 0;
         let currentDifficulty = 0;
         let provider = null;
         let contract = null;
@@ -565,7 +566,7 @@
                 await loadData();
                 setInterval(loadData, 5000);
                 
-                log('System ready! You can start mining now.', 'success');
+                log('System ready! Click START MINING to begin.', 'success');
             } catch (error) {
                 log('ERROR: ' + error.message, 'error');
                 console.error(error);
@@ -614,42 +615,6 @@
             }
         }
 
-        // Count leading zero nibbles in a hash
-        function countLeadingZeros(hashBytes) {
-            let count = 0;
-            for (let i = 0; i < hashBytes.length; i++) {
-                const byte = hashBytes[i];
-                const highNibble = (byte >> 4) & 0x0F;
-                const lowNibble = byte & 0x0F;
-                
-                if (highNibble === 0) {
-                    count++;
-                    if (lowNibble === 0) {
-                        count++;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            return count;
-        }
-
-        // Check if hash is valid locally (matches contract logic)
-        function isValidHash(hashString, difficulty) {
-            // Remove 0x prefix if present
-            const cleanHash = hashString.startsWith('0x') ? hashString.slice(2) : hashString;
-            const hashBytes = [];
-            
-            for (let i = 0; i < cleanHash.length; i += 2) {
-                hashBytes.push(parseInt(cleanHash.substr(i, 2), 16));
-            }
-            
-            const leadingZeros = countLeadingZeros(hashBytes);
-            return leadingZeros >= difficulty;
-        }
-
         async function startMining() {
             if (!account || !contract) {
                 log('ERROR: Please connect wallet first', 'error');
@@ -663,7 +628,7 @@
 
             mining = true;
             attemptCount = 0;
-            validCount = 0;
+            testedCount = 0;
             
             document.getElementById('mineBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'block';
@@ -672,99 +637,103 @@
             
             log('=== MINING STARTED ===', 'success');
             log('Target difficulty: ' + currentDifficulty + ' leading zero nibbles', 'info');
-            log('Searching for valid nonce locally...', 'info');
+            log('Using contract testNonce() for validation...', 'info');
 
             try {
                 const signer = provider.getSigner();
                 const contractWithSigner = contract.connect(signer);
 
                 while (mining) {
-                    // Generate random nonce
-                    const nonce = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+                    // Generate random nonce with better distribution
+                    const nonce = ethers.BigNumber.from(
+                        ethers.utils.randomBytes(32)
+                    ).mod(ethers.BigNumber.from("0xFFFFFFFFFFFFFFFF"));
+                    
                     attemptCount++;
                     document.getElementById('hashcount').textContent = attemptCount;
                     
-                    // Calculate hash locally (same as contract)
-                    const hash = ethers.utils.keccak256(
-                        ethers.utils.defaultAbiCoder.encode(
-                            ['address', 'uint256'],
-                            [account, nonce]
-                        )
-                    );
-                    
-                    // Check if valid locally
-                    if (isValidHash(hash, currentDifficulty)) {
-                        validCount++;
-                        document.getElementById('validcount').textContent = validCount;
+                    try {
+                        // Test nonce with contract FIRST (read-only, no gas)
+                        const [isValid, hash] = await contract.testNonce(nonce);
                         
-                        log('VALID HASH FOUND! Nonce: ' + nonce, 'success');
-                        log('Hash: ' + hash.slice(0, 20) + '...', 'info');
-                        log('Submitting to contract...', 'warning');
+                        testedCount++;
+                        document.getElementById('testedcount').textContent = testedCount;
                         
-                        try {
-                            const tx = await contractWithSigner.mine(nonce, { 
-                                gasLimit: 500000 
-                            });
+                        if (isValid) {
+                            log('✓ VALID NONCE FOUND!', 'success');
+                            log('Nonce: ' + nonce.toString(), 'info');
+                            log('Hash: ' + hash.slice(0, 20) + '...', 'info');
+                            log('Submitting transaction...', 'warning');
                             
-                            log('TX submitted: ' + tx.hash.slice(0, 20) + '...', 'warning');
-                            log('Waiting for confirmation...', 'warning');
-                            
-                            const receipt = await tx.wait();
-                            
-                            if (receipt.status === 1) {
-                                log('=== MINING SUCCESS! ===', 'success');
-                                log('Block mined! Gas used: ' + receipt.gasUsed.toString(), 'success');
-                                log('Rewards added to unclaimed balance', 'success');
-                                log('Cooldown: 10 seconds before next mine', 'info');
+                            try {
+                                // Estimate gas first
+                                const gasEstimate = await contractWithSigner.estimateGas.mine(nonce);
+                                const gasLimit = gasEstimate.mul(120).div(100); // 20% buffer
                                 
-                                mining = false;
-                                document.getElementById('mineBtn').style.display = 'block';
-                                document.getElementById('stopBtn').style.display = 'none';
-                                document.getElementById('claimBtn').disabled = false;
+                                log('Gas estimate: ' + gasEstimate.toString(), 'info');
                                 
-                                await loadData();
-                                return;
-                            } else {
-                                log('TX failed (status 0) - trying again...', 'error');
+                                // Submit with proper gas
+                                const tx = await contractWithSigner.mine(nonce, { 
+                                    gasLimit: gasLimit
+                                });
+                                
+                                log('TX submitted: ' + tx.hash, 'warning');
+                                log('Waiting for confirmation...', 'warning');
+                                
+                                const receipt = await tx.wait();
+                                
+                                if (receipt.status === 1) {
+                                    log('=== MINING SUCCESS! ===', 'success');
+                                    log('Block mined! Gas used: ' + receipt.gasUsed.toString(), 'success');
+                                    log('TX: ' + receipt.transactionHash, 'success');
+                                    log('Rewards added to your balance!', 'success');
+                                    
+                                    mining = false;
+                                    document.getElementById('mineBtn').style.display = 'block';
+                                    document.getElementById('stopBtn').style.display = 'none';
+                                    document.getElementById('claimBtn').disabled = false;
+                                    
+                                    await loadData();
+                                    return;
+                                } else {
+                                    log('TX failed with status 0', 'error');
+                                }
+                                
+                            } catch (txError) {
+                                if (txError.message.includes('user rejected') || txError.code === 4001) {
+                                    log('Transaction rejected by user', 'error');
+                                    mining = false;
+                                    document.getElementById('mineBtn').style.display = 'block';
+                                    document.getElementById('stopBtn').style.display = 'none';
+                                    return;
+                                }
+                                
+                                if (txError.message.includes('Mining too fast')) {
+                                    log('Cooldown active - stopping...', 'warning');
+                                    mining = false;
+                                    document.getElementById('mineBtn').style.display = 'block';
+                                    document.getElementById('stopBtn').style.display = 'none';
+                                    await loadData();
+                                    return;
+                                }
+                                
+                                log('TX Error: ' + txError.message.substring(0, 100), 'error');
+                                await new Promise(resolve => setTimeout(resolve, 2000));
                             }
-                            
-                        } catch (error) {
-                            if (error.message.includes('user rejected') || error.code === 4001) {
-                                log('Transaction rejected by user', 'error');
-                                mining = false;
-                                document.getElementById('mineBtn').style.display = 'block';
-                                document.getElementById('stopBtn').style.display = 'none';
-                                return;
-                            }
-                            
-                            if (error.message.includes('Mining too fast')) {
-                                log('Cooldown active - waiting...', 'warning');
-                                mining = false;
-                                document.getElementById('mineBtn').style.display = 'block';
-                                document.getElementById('stopBtn').style.display = 'none';
-                                await loadData();
-                                return;
-                            } else if (error.message.includes('Hash already used')) {
-                                log('Hash collision detected - finding new nonce...', 'warning');
-                            } else if (error.message.includes('Invalid hash')) {
-                                log('Contract rejected hash (mismatch?) - retrying...', 'error');
-                            } else {
-                                const shortMsg = error.message.substring(0, 150);
-                                log('Error: ' + shortMsg, 'error');
-                            }
-                            
-                            await new Promise(resolve => setTimeout(resolve, 1000));
                         }
+                        
+                    } catch (testError) {
+                        log('Test error: ' + testError.message.substring(0, 80), 'error');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                     
-                    // Progress update every 1000 attempts
-                    if (attemptCount % 1000 === 0) {
-                        log('Checked ' + attemptCount + ' nonces... (Success rate: ' + 
-                            ((validCount / attemptCount) * 100).toFixed(3) + '%)', 'info');
+                    // Progress log every 500 attempts
+                    if (attemptCount % 500 === 0) {
+                        log('Progress: ' + attemptCount + ' attempts, ' + testedCount + ' tested', 'info');
                     }
                     
-                    // Small delay to prevent browser freeze
-                    if (attemptCount % 100 === 0) {
+                    // Prevent browser freeze
+                    if (attemptCount % 50 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 10));
                     }
                 }
@@ -781,9 +750,9 @@
             mining = false;
             document.getElementById('mineBtn').style.display = 'block';
             document.getElementById('stopBtn').style.display = 'none';
-            log('=== MINING STOPPED BY USER ===', 'warning');
+            log('=== MINING STOPPED ===', 'warning');
             log('Total attempts: ' + attemptCount, 'info');
-            log('Valid hashes found: ' + validCount, 'info');
+            log('Tested with contract: ' + testedCount, 'info');
         }
 
         async function claimRewards() {
@@ -796,8 +765,12 @@
                 const signer = provider.getSigner();
                 const contractWithSigner = contract.connect(signer);
 
-                const tx = await contractWithSigner.claimRewards({ gasLimit: 200000 });
-                log('TX sent: ' + tx.hash.slice(0, 20) + '...', 'warning');
+                const gasEstimate = await contractWithSigner.estimateGas.claimRewards();
+                const tx = await contractWithSigner.claimRewards({ 
+                    gasLimit: gasEstimate.mul(120).div(100) 
+                });
+                
+                log('TX sent: ' + tx.hash, 'warning');
                 
                 const receipt = await tx.wait();
                 log('=== REWARDS CLAIMED! ===', 'success');
@@ -817,7 +790,7 @@
             }
         });
 
-        // Handle account changes
+        // Handle account/network changes
         if (window.ethereum) {
             window.ethereum.on('accountsChanged', (accounts) => {
                 if (accounts.length === 0) {
