@@ -140,6 +140,19 @@
             color: #00ff41;
         }
 
+        .terminal-line.success {
+            color: #00ff41;
+            font-weight: bold;
+        }
+
+        .terminal-line.error {
+            color: #ff4136;
+        }
+
+        .terminal-line.warning {
+            color: #ffdc00;
+        }
+
         .controls {
             display: flex;
             gap: 20px;
@@ -235,15 +248,6 @@
             position: relative;
         }
 
-        @keyframes glitch {
-            0% { transform: translate(0); }
-            20% { transform: translate(-2px, 2px); }
-            40% { transform: translate(-2px, -2px); }
-            60% { transform: translate(2px, 2px); }
-            80% { transform: translate(2px, -2px); }
-            100% { transform: translate(0); }
-        }
-
         .scan-line {
             position: fixed;
             width: 100%;
@@ -283,6 +287,18 @@
         @keyframes blink {
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0; }
+        }
+
+        .stop-btn {
+            background: rgba(255, 65, 54, 0.1);
+            border-color: #ff4136;
+            color: #ff4136;
+        }
+
+        .stop-btn:hover:not(:disabled) {
+            background: #ff4136;
+            color: #0a0e27;
+            box-shadow: 0 0 30px #ff4136;
         }
     </style>
 </head>
@@ -330,6 +346,9 @@
                     <strong>HASH RATE:</strong> <span id="hashrate">0</span> H/s
                 </div>
                 <div>
+                    <strong>HASHES TRIED:</strong> <span id="hashcount">0</span>
+                </div>
+                <div>
                     <strong>COOLDOWN:</strong> <span id="cooldown" class="blink">READY</span>
                 </div>
             </div>
@@ -341,6 +360,7 @@
 
             <div class="controls">
                 <button class="btn" id="mineBtn" onclick="startMining()">START MINING</button>
+                <button class="btn stop-btn" id="stopBtn" onclick="stopMining()" style="display:none;">STOP MINING</button>
                 <button class="btn" id="claimBtn" onclick="claimRewards()">CLAIM REWARDS</button>
             </div>
         </div>
@@ -354,6 +374,9 @@
                 </div>
                 <div class="info-item">
                     <strong>NETWORK:</strong> Monad Testnet
+                </div>
+                <div class="info-item">
+                    <strong>CHAIN ID:</strong> 10143 (0x279F)
                 </div>
                 <div class="info-item">
                     <strong>ALGORITHM:</strong> Keccak256 PoW
@@ -377,19 +400,23 @@
                 <div class="info-item">
                     [4] Claim accumulated rewards
                 </div>
+                <div class="info-item" style="margin-top: 15px; color: #ffdc00;">
+                    ⚠ Mining uses local hash validation before submitting to save gas
+                </div>
             </div>
         </div>
 
         <footer>
             <p>CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
-            <p style="margin-top: 10px; font-size: 12px;">MONADORE v1.0 - DECENTRALIZED MINING</p>
+            <p style="margin-top: 10px; font-size: 12px;">MONADORE v1.1 - DECENTRALIZED MINING</p>
         </footer>
     </div>
 
     <script>
-        var CONTRACT_ADDRESS = '0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415';
-        var RPC_URL = 'https://testnet-rpc.monad.xyz';
-        var ABI = [
+        const CONTRACT_ADDRESS = '0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415';
+        const RPC_URL = 'https://testnet-rpc.monad.xyz';
+        const CHAIN_ID = 10143; // 0x279F
+        const ABI = [
             "function mine(uint256 nonce) external",
             "function claimRewards() external",
             "function getMinerInfo(address miner) external view returns (uint256 balance, uint256 unclaimed, uint256 lastMine, uint256 nextMineTime)",
@@ -398,21 +425,23 @@
             "function difficulty() external view returns (uint256)"
         ];
 
-        var account = null;
-        var mining = false;
-        var hashCount = 0;
-        var startTime = 0;
+        let account = null;
+        let mining = false;
+        let hashCount = 0;
+        let startTime = 0;
+        let currentDifficulty = 0;
 
-        var canvas = document.getElementById('matrix');
-        var ctx = canvas.getContext('2d');
+        // Matrix background
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        var chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        var fontSize = 14;
-        var columns = canvas.width / fontSize;
-        var drops = [];
-        for (var i = 0; i < Math.floor(columns); i++) {
+        const chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const fontSize = 14;
+        const columns = canvas.width / fontSize;
+        const drops = [];
+        for (let i = 0; i < Math.floor(columns); i++) {
             drops[i] = 1;
         }
 
@@ -422,8 +451,8 @@
             ctx.fillStyle = '#00ff41';
             ctx.font = fontSize + 'px monospace';
 
-            for (var i = 0; i < drops.length; i++) {
-                var text = chars[Math.floor(Math.random() * chars.length)];
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars[Math.floor(Math.random() * chars.length)];
                 ctx.fillText(text, i * fontSize, drops[i] * fontSize);
                 
                 if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
@@ -434,54 +463,82 @@
         }
         setInterval(drawMatrix, 33);
 
-        window.addEventListener('resize', function() {
+        window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         });
 
-        function log(msg) {
-            var terminal = document.getElementById('terminal');
-            var line = document.createElement('div');
+        function log(msg, type = 'normal') {
+            const terminal = document.getElementById('terminal');
+            const line = document.createElement('div');
             line.className = 'terminal-line';
+            if (type === 'success') line.classList.add('success');
+            if (type === 'error') line.classList.add('error');
+            if (type === 'warning') line.classList.add('warning');
             line.textContent = msg;
             terminal.appendChild(line);
             terminal.scrollTop = terminal.scrollHeight;
+            
+            // Keep only last 50 lines
+            while (terminal.children.length > 50) {
+                terminal.removeChild(terminal.firstChild);
+            }
         }
 
         async function connectWallet() {
             try {
                 if (typeof window.ethereum === 'undefined') {
-                    log('ERROR: MetaMask not detected');
+                    log('ERROR: MetaMask not detected', 'error');
                     alert('Please install MetaMask');
                     return;
                 }
 
-                var accounts = await window.ethereum.request({
+                const accounts = await window.ethereum.request({
                     method: 'eth_requestAccounts'
                 });
 
+                // Switch to Monad Testnet
                 try {
                     await window.ethereum.request({
-                        method: 'wallet_addEthereumChain',
-                        params: [{
-                            chainId: '0xCAA3',
-                            chainName: 'Monad Testnet',
-                            nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
-                            rpcUrls: [RPC_URL],
-                            blockExplorerUrls: ['https://explorer.testnet.monad.xyz']
-                        }]
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x279F' }]
                     });
-                } catch (e) {
-                    console.log('Chain already added');
+                } catch (switchError) {
+                    // Chain not added, try to add it
+                    if (switchError.code === 4902) {
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0x279F',
+                                    chainName: 'Monad Testnet',
+                                    nativeCurrency: { 
+                                        name: 'MON', 
+                                        symbol: 'MON', 
+                                        decimals: 18 
+                                    },
+                                    rpcUrls: [RPC_URL],
+                                    blockExplorerUrls: ['https://explorer.testnet.monad.xyz']
+                                }]
+                            });
+                        } catch (addError) {
+                            log('ERROR: Failed to add Monad network', 'error');
+                            return;
+                        }
+                    } else {
+                        throw switchError;
+                    }
                 }
 
                 account = accounts[0];
-                document.querySelector('.wallet-btn').textContent = account.slice(0, 6) + '...' + account.slice(-4);
-                log('Wallet connected: ' + account.slice(0, 10) + '...');
-                loadData();
+                document.querySelector('.wallet-btn').textContent = 
+                    account.slice(0, 6) + '...' + account.slice(-4);
+                log('Wallet connected: ' + account.slice(0, 10) + '...', 'success');
+                
+                await loadData();
                 setInterval(loadData, 5000);
             } catch (error) {
-                log('ERROR: ' + error.message);
+                log('ERROR: ' + error.message, 'error');
             }
         }
 
@@ -489,112 +546,198 @@
             if (!account) return;
             
             try {
-                var provider = new ethers.providers.Web3Provider(window.ethereum);
-                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
 
-                var minerInfo = await contract.getMinerInfo(account);
-                var stats = await contract.getStats();
+                const [minerInfo, stats] = await Promise.all([
+                    contract.getMinerInfo(account),
+                    contract.getStats()
+                ]);
 
-                document.getElementById('balance').textContent = parseFloat(ethers.utils.formatEther(minerInfo[0])).toFixed(4);
-                document.getElementById('unclaimed').textContent = parseFloat(ethers.utils.formatEther(minerInfo[1])).toFixed(4);
-                document.getElementById('totalSupply').textContent = parseFloat(ethers.utils.formatEther(stats[0])).toFixed(2);
-                document.getElementById('difficulty').textContent = stats[1].toString();
+                document.getElementById('balance').textContent = 
+                    parseFloat(ethers.utils.formatEther(minerInfo[0])).toFixed(4);
+                document.getElementById('unclaimed').textContent = 
+                    parseFloat(ethers.utils.formatEther(minerInfo[1])).toFixed(4);
+                document.getElementById('totalSupply').textContent = 
+                    parseFloat(ethers.utils.formatEther(stats[0])).toFixed(2);
+                
+                currentDifficulty = stats[1].toNumber();
+                document.getElementById('difficulty').textContent = currentDifficulty;
 
-                var now = Math.floor(Date.now() / 1000);
-                var cooldown = Math.max(0, minerInfo[3].toNumber() - now);
+                const now = Math.floor(Date.now() / 1000);
+                const cooldown = Math.max(0, minerInfo[3].toNumber() - now);
                 
                 if (cooldown > 0) {
                     document.getElementById('cooldown').textContent = cooldown + 's';
-                    document.getElementById('mineBtn').disabled = true;
+                    if (!mining) {
+                        document.getElementById('mineBtn').disabled = true;
+                    }
                 } else {
                     document.getElementById('cooldown').textContent = 'READY';
-                    document.getElementById('mineBtn').disabled = false;
+                    if (!mining) {
+                        document.getElementById('mineBtn').disabled = false;
+                    }
                 }
 
-                var unclaimedVal = parseFloat(ethers.utils.formatEther(minerInfo[1]));
+                const unclaimedVal = parseFloat(ethers.utils.formatEther(minerInfo[1]));
                 document.getElementById('claimBtn').disabled = unclaimedVal === 0;
             } catch (error) {
                 console.error('Load error:', error);
+                log('Failed to load data: ' + error.message, 'error');
             }
+        }
+
+        function validateHash(miner, nonce, difficulty) {
+            // Encode the same way as Solidity: keccak256(abi.encodePacked(miner, nonce))
+            const encoded = ethers.utils.solidityPack(
+                ['address', 'uint256'],
+                [miner, nonce]
+            );
+            const hash = ethers.utils.keccak256(encoded);
+            
+            // Count leading zeros in hex (each hex char = 4 bits, so 2 chars = 1 byte = 8 bits)
+            const hashStr = hash.slice(2); // Remove '0x'
+            let leadingZeros = 0;
+            
+            for (let i = 0; i < hashStr.length; i++) {
+                const hexChar = hashStr[i];
+                if (hexChar === '0') {
+                    leadingZeros += 4;
+                } else {
+                    const num = parseInt(hexChar, 16);
+                    if (num < 2) leadingZeros += 3;
+                    else if (num < 4) leadingZeros += 2;
+                    else if (num < 8) leadingZeros += 1;
+                    break;
+                }
+            }
+            
+            return leadingZeros >= difficulty;
         }
 
         async function startMining() {
             if (!account) {
-                log('ERROR: Connect wallet first');
+                log('ERROR: Connect wallet first', 'error');
+                return;
+            }
+
+            if (currentDifficulty === 0) {
+                log('ERROR: Difficulty not loaded, please wait...', 'error');
                 return;
             }
 
             mining = true;
             hashCount = 0;
             startTime = Date.now();
-            document.getElementById('mineBtn').disabled = true;
-            document.getElementById('mineBtn').classList.add('mining');
             
-            log('Mining started...');
+            document.getElementById('mineBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+            document.getElementById('stopBtn').disabled = false;
+            
+            log('Mining started... Target: ' + currentDifficulty + ' leading zeros', 'warning');
+            log('Searching for valid nonce...', 'warning');
 
             try {
-                var provider = new ethers.providers.Web3Provider(window.ethereum);
-                var signer = provider.getSigner();
-                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const signer = provider.getSigner();
+                const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
 
-                var mine = async function() {
-                    if (!mining) return;
+                const mineLoop = async () => {
+                    while (mining) {
+                        const nonce = Math.floor(Math.random() * 1000000000);
+                        hashCount++;
+                        
+                        // Update UI every 100 hashes
+                        if (hashCount % 100 === 0) {
+                            const elapsed = (Date.now() - startTime) / 1000;
+                            const rate = Math.floor(hashCount / elapsed);
+                            document.getElementById('hashrate').textContent = rate;
+                            document.getElementById('hashcount').textContent = hashCount;
+                        }
 
-                    var nonce = Math.floor(Math.random() * 1000000000);
-                    hashCount++;
-                    
-                    var elapsed = (Date.now() - startTime) / 1000;
-                    var rate = Math.floor(hashCount / elapsed);
-                    document.getElementById('hashrate').textContent = rate;
+                        // Validate hash locally first
+                        if (validateHash(account, nonce, currentDifficulty)) {
+                            log('Valid hash found! Nonce: ' + nonce, 'success');
+                            log('Submitting to blockchain...', 'warning');
+                            
+                            try {
+                                const tx = await contract.mine(nonce, { 
+                                    gasLimit: 500000 
+                                });
+                                log('TX sent: ' + tx.hash.slice(0, 16) + '...', 'warning');
+                                
+                                const receipt = await tx.wait();
+                                log('SUCCESS! Block mined. Gas used: ' + receipt.gasUsed.toString(), 'success');
+                                
+                                mining = false;
+                                document.getElementById('mineBtn').style.display = 'block';
+                                document.getElementById('stopBtn').style.display = 'none';
+                                await loadData();
+                                return;
+                            } catch (error) {
+                                log('TX failed: ' + error.message.substring(0, 80), 'error');
+                                if (error.message.includes('user rejected')) {
+                                    mining = false;
+                                    document.getElementById('mineBtn').style.display = 'block';
+                                    document.getElementById('stopBtn').style.display = 'none';
+                                    return;
+                                }
+                                // Continue mining if transaction failed
+                            }
+                        }
 
-                    try {
-                        log('Attempting nonce: ' + nonce);
-                        var tx = await contract.mine(nonce, { gasLimit: 300000 });
-                        log('Transaction sent: ' + tx.hash.slice(0, 10) + '...');
-                        await tx.wait();
-                        log('SUCCESS! Block mined.');
-                        mining = false;
-                        document.getElementById('mineBtn').classList.remove('mining');
-                        loadData();
-                    } catch (error) {
-                        if (error.message.includes('Invalid hash')) {
-                            setTimeout(mine, 50);
-                        } else {
-                            log('ERROR: ' + error.message.substring(0, 80));
-                            mining = false;
-                            document.getElementById('mineBtn').classList.remove('mining');
+                        // Small delay to prevent browser freeze
+                        if (hashCount % 1000 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 10));
                         }
                     }
                 };
 
-                mine();
+                await mineLoop();
             } catch (error) {
-                log('ERROR: ' + error.message);
+                log('ERROR: ' + error.message, 'error');
                 mining = false;
-                document.getElementById('mineBtn').classList.remove('mining');
+                document.getElementById('mineBtn').style.display = 'block';
+                document.getElementById('stopBtn').style.display = 'none';
             }
+        }
+
+        function stopMining() {
+            mining = false;
+            document.getElementById('mineBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+            log('Mining stopped by user', 'warning');
         }
 
         async function claimRewards() {
             if (!account) return;
             
             document.getElementById('claimBtn').disabled = true;
-            log('Claiming rewards...');
+            log('Claiming rewards...', 'warning');
 
             try {
-                var provider = new ethers.providers.Web3Provider(window.ethereum);
-                var signer = provider.getSigner();
-                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const signer = provider.getSigner();
+                const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
 
-                var tx = await contract.claimRewards();
-                log('Transaction sent: ' + tx.hash.slice(0, 10) + '...');
-                await tx.wait();
-                log('Rewards claimed successfully!');
-                loadData();
+                const tx = await contract.claimRewards({ gasLimit: 200000 });
+                log('TX sent: ' + tx.hash.slice(0, 16) + '...', 'warning');
+                
+                const receipt = await tx.wait();
+                log('Rewards claimed! Gas used: ' + receipt.gasUsed.toString(), 'success');
+                await loadData();
             } catch (error) {
-                log('ERROR: ' + error.message);
+                log('ERROR: ' + error.message, 'error');
+                document.getElementById('claimBtn').disabled = false;
             }
         }
+
+        // Auto-connect if previously connected
+        window.addEventListener('load', () => {
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                connectWallet();
+            }
+        });
     </script>
 </body>
 </html>
