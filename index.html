@@ -1,450 +1,600 @@
-import React, { useState, useEffect } from 'react';
-import { Pickaxe, Zap, TrendingUp, Clock } from 'lucide-react';
-
-const MonadOreMiner = () => {
-  const [account, setAccount] = useState('');
-  const [balance, setBalance] = useState('0');
-  const [unclaimed, setUnclaimed] = useState('0');
-  const [mining, setMining] = useState(false);
-  const [hashRate, setHashRate] = useState(0);
-  const [difficulty, setDifficulty] = useState(0);
-  const [totalSupply, setTotalSupply] = useState('0');
-  const [connected, setConnected] = useState(false);
-  const [nextMineTime, setNextMineTime] = useState(0);
-  const [particles, setParticles] = useState([]);
-
-  const RPC_URL = 'https://testnet-rpc.monad.xyz';
-  const CONTRACT_ADDRESS = '0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415';
-
-  const CONTRACT_ABI = [
-    "function mine(uint256 nonce) external",
-    "function claimRewards() external",
-    "function balanceOf(address account) view returns (uint256)",
-    "function unclaimedRewards(address account) view returns (uint256)",
-    "function difficulty() view returns (uint256)",
-    "function totalSupply() view returns (uint256)",
-    "function getMinerInfo(address miner) view returns (uint256, uint256, uint256, uint256)",
-    "function getStats() view returns (uint256, uint256, uint256, uint256)"
-  ];
-
-  useEffect(() => {
-    checkConnection();
-    const interval = setInterval(() => {
-      if (connected) updateStats();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [connected]);
-
-  useEffect(() => {
-    const particleInterval = setInterval(() => {
-      if (mining) {
-        setParticles(prev => [...prev, {
-          id: Date.now(),
-          x: Math.random() * 100,
-          y: Math.random() * 100
-        }]);
-        setTimeout(() => {
-          setParticles(prev => prev.slice(1));
-        }, 2000);
-      }
-    }, 200);
-    return () => clearInterval(particleInterval);
-  }, [mining]);
-
-  const checkConnection = async () => {
-    if (typeof window.ethereum !== 'undefined') {
-      try {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          setConnected(true);
-          await updateStats();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonadORE - PoW Mining</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      } catch (error) {
-        console.error('Connection check failed:', error);
-      }
-    }
-  };
 
-  const connectWallet = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      alert('MetaMask not detected. Please install MetaMask extension.');
-      return;
-    }
-
-    try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAccount(accounts[0]);
-
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x29A' }],
-        });
-      } catch (switchError) {
-        if (switchError.code === 4902) {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: '0x29A',
-              chainName: 'Monad Testnet',
-              nativeCurrency: {
-                name: 'Monad',
-                symbol: 'MON',
-                decimals: 18
-              },
-              rpcUrls: [RPC_URL],
-              blockExplorerUrls: ['https://explorer.testnet.monad.xyz/']
-            }]
-          });
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0e27;
+            color: #00ff41;
+            overflow-x: hidden;
+            position: relative;
         }
-      }
 
-      setConnected(true);
-      await updateStats();
-    } catch (error) {
-      console.error('Wallet connection failed:', error);
-    }
-  };
-
-  const updateStats = async () => {
-    if (!window.ethers || !connected) return;
-
-    try {
-      const provider = new window.ethers.BrowserProvider(window.ethereum);
-      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-
-      const [bal, unc, lastMine, nextMine] = await contract.getMinerInfo(account);
-      const [supply, diff] = await contract.getStats();
-
-      setBalance(window.ethers.formatEther(bal));
-      setUnclaimed(window.ethers.formatEther(unc));
-      setDifficulty(Number(diff));
-      setTotalSupply(window.ethers.formatEther(supply));
-      
-      const now = Math.floor(Date.now() / 1000);
-      setNextMineTime(Number(nextMine) > now ? Number(nextMine) - now : 0);
-    } catch (error) {
-      console.error('Stats update failed:', error);
-    }
-  };
-
-  const startMining = async () => {
-    if (!connected) {
-      alert('Connect wallet first');
-      return;
-    }
-
-    if (nextMineTime > 0) {
-      alert(`Wait ${nextMineTime} seconds before next mine`);
-      return;
-    }
-
-    setMining(true);
-    
-    try {
-      const provider = new window.ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-      let nonce = Math.floor(Math.random() * 1000000000);
-      let attempts = 0;
-      const maxAttempts = 100000;
-
-      const mineInterval = setInterval(() => {
-        setHashRate(prev => prev + Math.floor(Math.random() * 5000));
-      }, 100);
-
-      while (attempts < maxAttempts) {
-        attempts++;
-        
-        const hash = window.ethers.solidityPackedKeccak256(
-          ['address', 'uint256', 'uint256', 'uint256'],
-          [account, nonce, Math.floor(Date.now() / 1000), Math.floor(Math.random() * 1000000)]
-        );
-
-        const target = BigInt(2) ** BigInt(256 - difficulty);
-        if (BigInt(hash) < target) {
-          clearInterval(mineInterval);
-          
-          const tx = await contract.mine(nonce);
-          await tx.wait();
-          
-          alert('Mining successful! Rewards added to unclaimed balance.');
-          await updateStats();
-          setMining(false);
-          setHashRate(0);
-          return;
+        #matrix {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            opacity: 0.15;
         }
-        
-        nonce++;
-      }
 
-      clearInterval(mineInterval);
-      alert('No valid hash found. Try again.');
-      setMining(false);
-      setHashRate(0);
-    } catch (error) {
-      console.error('Mining failed:', error);
-      alert('Mining failed: ' + (error.reason || error.message));
-      setMining(false);
-      setHashRate(0);
-    }
-  };
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
 
-  const claimRewards = async () => {
-    if (!connected || parseFloat(unclaimed) === 0) return;
+        header {
+            border: 2px solid #00ff41;
+            padding: 25px;
+            margin-bottom: 30px;
+            background: rgba(0, 255, 65, 0.03);
+            box-shadow: 0 0 30px rgba(0, 255, 65, 0.3);
+            position: relative;
+        }
 
-    try {
-      const provider = new window.ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        h1 {
+            font-size: 48px;
+            text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+            letter-spacing: 4px;
+            display: inline-block;
+        }
 
-      const tx = await contract.claimRewards();
-      await tx.wait();
-      
-      alert('Rewards claimed successfully!');
-      await updateStats();
-    } catch (error) {
-      console.error('Claim failed:', error);
-      alert('Claim failed: ' + (error.reason || error.message));
-    }
-  };
+        .wallet-btn {
+            float: right;
+            background: transparent;
+            border: 2px solid #00ff41;
+            color: #00ff41;
+            padding: 12px 25px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
 
-  return (
-    <div className="min-h-screen bg-black text-white overflow-hidden relative">
-      <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
-      
-      {/* Animated background */}
-      <div className="fixed inset-0 opacity-30">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600 rounded-full filter blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600 rounded-full filter blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-600 rounded-full filter blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
-      </div>
+        .wallet-btn:hover {
+            background: #00ff41;
+            color: #0a0e27;
+            box-shadow: 0 0 20px #00ff41;
+        }
 
-      {/* Mining particles */}
-      {particles.map(p => (
-        <div
-          key={p.id}
-          className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping"
-          style={{
-            left: `${p.x}%`,
-            top: `${p.y}%`,
-            animationDuration: '2s'
-          }}
-        />
-      ))}
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-16 mt-8">
-          <div className="inline-block mb-6 relative">
-            <Pickaxe className="w-20 h-20 text-yellow-400 animate-bounce" />
-            <div className="absolute inset-0 blur-xl bg-yellow-400 opacity-50"></div>
-          </div>
-          <h1 className="text-7xl font-black mb-4 tracking-tight">
-            <span className="bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
-              MONAD
-            </span>
-            <span className="text-white"> ORE</span>
-          </h1>
-          <p className="text-xl text-gray-400 font-light">proof-of-work mining on monad testnet</p>
-        </div>
+        .stat-box {
+            border: 1px solid #00ff41;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            position: relative;
+        }
 
-        {/* Stats Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-400 text-sm uppercase tracking-wider">Total Supply</span>
-              <TrendingUp className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-3xl font-bold">{parseFloat(totalSupply).toFixed(2)}</p>
-            <p className="text-xs text-gray-500 mt-1">ORE mined</p>
-          </div>
+        .stat-box::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #00ff41, transparent, #00ff41);
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
 
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-400 text-sm uppercase tracking-wider">Difficulty</span>
-              <Zap className="w-5 h-5 text-yellow-400" />
-            </div>
-            <p className="text-3xl font-bold">{difficulty}</p>
-            <p className="text-xs text-gray-500 mt-1">current level</p>
-          </div>
+        .stat-box:hover::before {
+            opacity: 1;
+        }
 
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-400 text-sm uppercase tracking-wider">Hash Rate</span>
-              <Clock className="w-5 h-5 text-blue-400" />
-            </div>
-            <p className="text-3xl font-bold">{hashRate.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-1">hashes/sec</p>
-          </div>
-        </div>
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: 10px;
+        }
 
-        {/* Main Content */}
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Left Panel */}
-          <div className="space-y-6">
-            {/* Wallet */}
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-3xl p-8">
-              {!connected ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <svg className="w-8 h-8" fill="white" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-                    </svg>
-                  </div>
-                  <h3 className="text-2xl font-bold mb-4">Connect Wallet</h3>
-                  <p className="text-gray-400 mb-8">Start mining ORE tokens on Monad</p>
-                  <button
-                    onClick={connectWallet}
-                    className="px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl font-semibold text-lg transition-all transform hover:scale-105"
-                  >
-                    Connect MetaMask
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-bold">Your Wallet</h3>
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                  </div>
-                  
-                  <div className="bg-black/40 rounded-xl p-4 mb-4 border border-gray-700">
-                    <p className="text-xs text-gray-500 mb-1">ADDRESS</p>
-                    <p className="font-mono text-sm">{account.slice(0, 6)}...{account.slice(-4)}</p>
-                  </div>
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ff41;
+        }
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-black/40 rounded-xl p-4 border border-gray-700">
-                      <p className="text-xs text-gray-500 mb-1">BALANCE</p>
-                      <p className="text-2xl font-bold text-green-400">{parseFloat(balance).toFixed(4)}</p>
-                      <p className="text-xs text-gray-500">ORE</p>
-                    </div>
-                    <div className="bg-black/40 rounded-xl p-4 border border-gray-700">
-                      <p className="text-xs text-gray-500 mb-1">UNCLAIMED</p>
-                      <p className="text-2xl font-bold text-yellow-400">{parseFloat(unclaimed).toFixed(4)}</p>
-                      <p className="text-xs text-gray-500">ORE</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+        .mining-zone {
+            border: 2px solid #00ff41;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.7);
+            margin-bottom: 30px;
+        }
 
-            {/* Claim */}
-            {connected && (
-              <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border border-yellow-700/50 rounded-3xl p-8">
-                <h3 className="text-xl font-bold mb-4">Claim Rewards</h3>
-                <p className="text-gray-400 text-sm mb-6">Transfer unclaimed rewards to your balance</p>
-                <button
-                  onClick={claimRewards}
-                  disabled={parseFloat(unclaimed) === 0}
-                  className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${
-                    parseFloat(unclaimed) > 0
-                      ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 transform hover:scale-105'
-                      : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                  }`}
-                >
-                  Claim {parseFloat(unclaimed).toFixed(4)} ORE
-                </button>
-              </div>
-            )}
-          </div>
+        .terminal {
+            background: #000;
+            border: 1px solid #00ff41;
+            padding: 20px;
+            min-height: 150px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
 
-          {/* Right Panel - Mining */}
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-3xl p-8">
-            <h3 className="text-2xl font-bold mb-6">Mining Control</h3>
+        .terminal-line {
+            margin-bottom: 5px;
+        }
+
+        .terminal-line::before {
+            content: '> ';
+            color: #00ff41;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 20px;
+            background: transparent;
+            border: 2px solid #00ff41;
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #00ff41;
+            color: #0a0e27;
+            box-shadow: 0 0 30px #00ff41;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn.mining {
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px #00ff41; }
+            50% { box-shadow: 0 0 40px #00ff41; }
+        }
+
+        .hashrate-display {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(0, 255, 65, 0.05);
+            border-left: 3px solid #00ff41;
+        }
+
+        .info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .info-box {
+            border: 1px solid #00ff41;
+            padding: 25px;
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .info-box h3 {
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .info-item {
+            margin-bottom: 12px;
+            padding-left: 15px;
+            border-left: 2px solid #00ff41;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            border-top: 1px solid #00ff41;
+            margin-top: 50px;
+            opacity: 0.7;
+        }
+
+        footer a {
+            color: #00ff41;
+            text-decoration: none;
+            text-shadow: 0 0 5px #00ff41;
+        }
+
+        footer a:hover {
+            text-shadow: 0 0 15px #00ff41;
+        }
+
+        .glitch {
+            position: relative;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+            100% { transform: translate(0); }
+        }
+
+        .scan-line {
+            position: fixed;
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 255, 65, 0.5);
+            box-shadow: 0 0 10px #00ff41;
+            animation: scan 4s linear infinite;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            from { top: 0; }
+            to { top: 100%; }
+        }
+
+        @media (max-width: 768px) {
+            .info-section {
+                grid-template-columns: 1fr;
+            }
             
-            {mining ? (
-              <div className="space-y-6">
-                <div className="bg-green-500/10 border border-green-500/50 rounded-xl p-6 text-center">
-                  <Pickaxe className="w-12 h-12 mx-auto mb-4 text-green-400 animate-bounce" />
-                  <p className="text-lg font-semibold text-green-400 mb-2">Mining Active</p>
-                  <p className="text-sm text-gray-400">Searching for valid proof-of-work...</p>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Progress</span>
-                    <span className="text-white font-semibold">{(hashRate / 1000).toFixed(1)}k hashes</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-green-500 to-blue-500 animate-pulse" style={{width: '100%'}}></div>
-                  </div>
-                </div>
+            h1 {
+                font-size: 32px;
+            }
+            
+            .wallet-btn {
+                float: none;
+                display: block;
+                margin-top: 15px;
+            }
+        }
 
-                <button
-                  onClick={() => setMining(false)}
-                  className="w-full py-4 bg-red-600 hover:bg-red-700 rounded-xl font-semibold text-lg transition-all"
-                >
-                  Stop Mining
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="bg-black/40 rounded-xl p-6 border border-gray-700">
-                  <p className="text-sm text-gray-400 mb-4">Mining generates ORE tokens through proof-of-work. Find a valid hash to earn rewards.</p>
-                  
-                  {nextMineTime > 0 && (
-                    <div className="bg-orange-500/10 border border-orange-500/50 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-orange-400">⏱ Cooldown: {nextMineTime}s remaining</p>
-                    </div>
-                  )}
+        .blink {
+            animation: blink 1s infinite;
+        }
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Reward per block:</span>
-                      <span className="text-white font-semibold">1.00 ORE</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Min interval:</span>
-                      <span className="text-white font-semibold">10 seconds</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Max supply:</span>
-                      <span className="text-white font-semibold">21M ORE</span>
-                    </div>
-                  </div>
-                </div>
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="scan-line"></div>
+    <canvas id="matrix"></canvas>
 
-                <button
-                  onClick={startMining}
-                  disabled={!connected || nextMineTime > 0}
-                  className={`w-full py-5 rounded-xl font-bold text-xl transition-all ${
-                    connected && nextMineTime === 0
-                      ? 'bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 transform hover:scale-105 shadow-lg shadow-green-500/50'
-                      : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                  }`}
-                >
-                  {!connected ? 'Connect Wallet' : nextMineTime > 0 ? `Wait ${nextMineTime}s` : 'Start Mining'}
-                </button>
-              </div>
-            )}
-          </div>
+    <div class="container">
+        <header>
+            <h1 class="glitch">MONADORE</h1>
+            <button class="wallet-btn" onclick="connectWallet()">CONNECT WALLET</button>
+            <div style="clear: both; margin-top: 15px;">
+                <small>PROOF-OF-WORK MINING PROTOCOL</small>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-label">YOUR BALANCE</div>
+                <div class="stat-value" id="balance">0.0000</div>
+                <div class="stat-label">ORE</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">UNCLAIMED REWARDS</div>
+                <div class="stat-value" id="unclaimed">0.0000</div>
+                <div class="stat-label">ORE</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">TOTAL MINED</div>
+                <div class="stat-value" id="totalSupply">0.00</div>
+                <div class="stat-label">/ 21M ORE</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">DIFFICULTY</div>
+                <div class="stat-value" id="difficulty">0</div>
+                <div class="stat-label">LEADING ZEROS</div>
+            </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-16 text-center">
-          <div className="inline-block bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 rounded-full px-6 py-3 mb-4">
-            <a 
-              href="https://x.com/ega_2ez4crypto" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-              </svg>
-              @ega_2ez4crypto
-            </a>
-          </div>
-          <p className="text-gray-500 text-sm">
-            Contract: <span className="font-mono text-gray-400">{CONTRACT_ADDRESS}</span>
-          </p>
+        <div class="mining-zone">
+            <h2 style="margin-bottom: 20px;">&gt;&gt; MINING TERMINAL</h2>
+            
+            <div class="hashrate-display">
+                <div>
+                    <strong>HASH RATE:</strong> <span id="hashrate">0</span> H/s
+                </div>
+                <div>
+                    <strong>COOLDOWN:</strong> <span id="cooldown" class="blink">READY</span>
+                </div>
+            </div>
+
+            <div class="terminal" id="terminal">
+                <div class="terminal-line">System initialized...</div>
+                <div class="terminal-line">Awaiting connection...</div>
+            </div>
+
+            <div class="controls">
+                <button class="btn" id="mineBtn" onclick="startMining()">START MINING</button>
+                <button class="btn" id="claimBtn" onclick="claimRewards()">CLAIM REWARDS</button>
+            </div>
         </div>
-      </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>&gt; PROTOCOL INFO</h3>
+                <div class="info-item">
+                    <strong>CONTRACT:</strong><br>
+                    <small style="word-break: break-all;">0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415</small>
+                </div>
+                <div class="info-item">
+                    <strong>NETWORK:</strong> Monad Testnet
+                </div>
+                <div class="info-item">
+                    <strong>ALGORITHM:</strong> Keccak256 PoW
+                </div>
+                <div class="info-item">
+                    <strong>MIN INTERVAL:</strong> 10 seconds
+                </div>
+            </div>
+
+            <div class="info-box">
+                <h3>&gt; HOW TO MINE</h3>
+                <div class="info-item">
+                    [1] Connect MetaMask wallet
+                </div>
+                <div class="info-item">
+                    [2] Click START MINING
+                </div>
+                <div class="info-item">
+                    [3] Wait for valid hash discovery
+                </div>
+                <div class="info-item">
+                    [4] Claim accumulated rewards
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
+            <p style="margin-top: 10px; font-size: 12px;">MONADORE v1.0 - DECENTRALIZED MINING</p>
+        </footer>
     </div>
-  );
-};
 
-export default MonadOreMiner;
+    <script>
+        var CONTRACT_ADDRESS = '0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415';
+        var RPC_URL = 'https://testnet-rpc.monad.xyz';
+        var ABI = [
+            "function mine(uint256 nonce) external",
+            "function claimRewards() external",
+            "function getMinerInfo(address miner) external view returns (uint256 balance, uint256 unclaimed, uint256 lastMine, uint256 nextMineTime)",
+            "function getStats() external view returns (uint256 supply, uint256 diff, uint256 reward, uint256 maxSupply)",
+            "function totalSupply() external view returns (uint256)",
+            "function difficulty() external view returns (uint256)"
+        ];
+
+        var account = null;
+        var mining = false;
+        var hashCount = 0;
+        var startTime = 0;
+
+        var canvas = document.getElementById('matrix');
+        var ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        var chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        var fontSize = 14;
+        var columns = canvas.width / fontSize;
+        var drops = [];
+        for (var i = 0; i < Math.floor(columns); i++) {
+            drops[i] = 1;
+        }
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(10, 14, 39, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#00ff41';
+            ctx.font = fontSize + 'px monospace';
+
+            for (var i = 0; i < drops.length; i++) {
+                var text = chars[Math.floor(Math.random() * chars.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+        setInterval(drawMatrix, 33);
+
+        window.addEventListener('resize', function() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        function log(msg) {
+            var terminal = document.getElementById('terminal');
+            var line = document.createElement('div');
+            line.className = 'terminal-line';
+            line.textContent = msg;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        async function connectWallet() {
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    log('ERROR: MetaMask not detected');
+                    alert('Please install MetaMask');
+                    return;
+                }
+
+                var accounts = await window.ethereum.request({
+                    method: 'eth_requestAccounts'
+                });
+
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: '0xCAA3',
+                            chainName: 'Monad Testnet',
+                            nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+                            rpcUrls: [RPC_URL],
+                            blockExplorerUrls: ['https://explorer.testnet.monad.xyz']
+                        }]
+                    });
+                } catch (e) {
+                    console.log('Chain already added');
+                }
+
+                account = accounts[0];
+                document.querySelector('.wallet-btn').textContent = account.slice(0, 6) + '...' + account.slice(-4);
+                log('Wallet connected: ' + account.slice(0, 10) + '...');
+                loadData();
+                setInterval(loadData, 5000);
+            } catch (error) {
+                log('ERROR: ' + error.message);
+            }
+        }
+
+        async function loadData() {
+            if (!account) return;
+            
+            try {
+                var provider = new ethers.providers.Web3Provider(window.ethereum);
+                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+
+                var minerInfo = await contract.getMinerInfo(account);
+                var stats = await contract.getStats();
+
+                document.getElementById('balance').textContent = parseFloat(ethers.utils.formatEther(minerInfo[0])).toFixed(4);
+                document.getElementById('unclaimed').textContent = parseFloat(ethers.utils.formatEther(minerInfo[1])).toFixed(4);
+                document.getElementById('totalSupply').textContent = parseFloat(ethers.utils.formatEther(stats[0])).toFixed(2);
+                document.getElementById('difficulty').textContent = stats[1].toString();
+
+                var now = Math.floor(Date.now() / 1000);
+                var cooldown = Math.max(0, minerInfo[3].toNumber() - now);
+                
+                if (cooldown > 0) {
+                    document.getElementById('cooldown').textContent = cooldown + 's';
+                    document.getElementById('mineBtn').disabled = true;
+                } else {
+                    document.getElementById('cooldown').textContent = 'READY';
+                    document.getElementById('mineBtn').disabled = false;
+                }
+
+                var unclaimedVal = parseFloat(ethers.utils.formatEther(minerInfo[1]));
+                document.getElementById('claimBtn').disabled = unclaimedVal === 0;
+            } catch (error) {
+                console.error('Load error:', error);
+            }
+        }
+
+        async function startMining() {
+            if (!account) {
+                log('ERROR: Connect wallet first');
+                return;
+            }
+
+            mining = true;
+            hashCount = 0;
+            startTime = Date.now();
+            document.getElementById('mineBtn').disabled = true;
+            document.getElementById('mineBtn').classList.add('mining');
+            
+            log('Mining started...');
+
+            try {
+                var provider = new ethers.providers.Web3Provider(window.ethereum);
+                var signer = provider.getSigner();
+                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+                var mine = async function() {
+                    if (!mining) return;
+
+                    var nonce = Math.floor(Math.random() * 1000000000);
+                    hashCount++;
+                    
+                    var elapsed = (Date.now() - startTime) / 1000;
+                    var rate = Math.floor(hashCount / elapsed);
+                    document.getElementById('hashrate').textContent = rate;
+
+                    try {
+                        log('Attempting nonce: ' + nonce);
+                        var tx = await contract.mine(nonce, { gasLimit: 300000 });
+                        log('Transaction sent: ' + tx.hash.slice(0, 10) + '...');
+                        await tx.wait();
+                        log('SUCCESS! Block mined.');
+                        mining = false;
+                        document.getElementById('mineBtn').classList.remove('mining');
+                        loadData();
+                    } catch (error) {
+                        if (error.message.includes('Invalid hash')) {
+                            setTimeout(mine, 50);
+                        } else {
+                            log('ERROR: ' + error.message.substring(0, 80));
+                            mining = false;
+                            document.getElementById('mineBtn').classList.remove('mining');
+                        }
+                    }
+                };
+
+                mine();
+            } catch (error) {
+                log('ERROR: ' + error.message);
+                mining = false;
+                document.getElementById('mineBtn').classList.remove('mining');
+            }
+        }
+
+        async function claimRewards() {
+            if (!account) return;
+            
+            document.getElementById('claimBtn').disabled = true;
+            log('Claiming rewards...');
+
+            try {
+                var provider = new ethers.providers.Web3Provider(window.ethereum);
+                var signer = provider.getSigner();
+                var contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+                var tx = await contract.claimRewards();
+                log('Transaction sent: ' + tx.hash.slice(0, 10) + '...');
+                await tx.wait();
+                log('Rewards claimed successfully!');
+                loadData();
+            } catch (error) {
+                log('ERROR: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
