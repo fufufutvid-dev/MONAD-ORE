@@ -244,10 +244,6 @@
             text-shadow: 0 0 15px #00ff41;
         }
 
-        .glitch {
-            position: relative;
-        }
-
         .scan-line {
             position: fixed;
             width: 100%;
@@ -308,7 +304,7 @@
 
     <div class="container">
         <header>
-            <h1 class="glitch">MONADORE</h1>
+            <h1>MONADORE</h1>
             <button class="wallet-btn" onclick="connectWallet()">CONNECT WALLET</button>
             <div style="clear: both; margin-top: 15px;">
                 <small>PROOF-OF-WORK MINING PROTOCOL</small>
@@ -334,7 +330,7 @@
             <div class="stat-box">
                 <div class="stat-label">DIFFICULTY</div>
                 <div class="stat-value" id="difficulty">0</div>
-                <div class="stat-label">LEADING ZEROS</div>
+                <div class="stat-label">TARGET</div>
             </div>
         </div>
 
@@ -343,10 +339,7 @@
             
             <div class="hashrate-display">
                 <div>
-                    <strong>HASH RATE:</strong> <span id="hashrate">0</span> H/s
-                </div>
-                <div>
-                    <strong>HASHES TRIED:</strong> <span id="hashcount">0</span>
+                    <strong>ATTEMPTS:</strong> <span id="hashcount">0</span>
                 </div>
                 <div>
                     <strong>COOLDOWN:</strong> <span id="cooldown" class="blink">READY</span>
@@ -395,27 +388,27 @@
                     [2] Click START MINING
                 </div>
                 <div class="info-item">
-                    [3] Wait for valid hash discovery
+                    [3] Mining tries random nonces on-chain
                 </div>
                 <div class="info-item">
                     [4] Claim accumulated rewards
                 </div>
                 <div class="info-item" style="margin-top: 15px; color: #ffdc00;">
-                    ⚠ Mining uses local hash validation before submitting to save gas
+                    ⚠ Each mining attempt costs gas. Contract validates PoW on-chain.
                 </div>
             </div>
         </div>
 
         <footer>
             <p>CREATED BY <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
-            <p style="margin-top: 10px; font-size: 12px;">MONADORE v1.1 - DECENTRALIZED MINING</p>
+            <p style="margin-top: 10px; font-size: 12px;">MONADORE v1.2 - DECENTRALIZED MINING</p>
         </footer>
     </div>
 
     <script>
         const CONTRACT_ADDRESS = '0x7Aa87dFeFC4E07EdB718bb0f7e0F18103ab3d415';
         const RPC_URL = 'https://testnet-rpc.monad.xyz';
-        const CHAIN_ID = 10143; // 0x279F
+        const CHAIN_ID = 10143;
         const ABI = [
             "function mine(uint256 nonce) external",
             "function claimRewards() external",
@@ -427,8 +420,7 @@
 
         let account = null;
         let mining = false;
-        let hashCount = 0;
-        let startTime = 0;
+        let attemptCount = 0;
         let currentDifficulty = 0;
 
         // Matrix background
@@ -479,7 +471,6 @@
             terminal.appendChild(line);
             terminal.scrollTop = terminal.scrollHeight;
             
-            // Keep only last 50 lines
             while (terminal.children.length > 50) {
                 terminal.removeChild(terminal.firstChild);
             }
@@ -497,14 +488,12 @@
                     method: 'eth_requestAccounts'
                 });
 
-                // Switch to Monad Testnet
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: '0x279F' }]
                     });
                 } catch (switchError) {
-                    // Chain not added, try to add it
                     if (switchError.code === 4902) {
                         try {
                             await window.ethereum.request({
@@ -583,36 +572,7 @@
                 document.getElementById('claimBtn').disabled = unclaimedVal === 0;
             } catch (error) {
                 console.error('Load error:', error);
-                log('Failed to load data: ' + error.message, 'error');
             }
-        }
-
-        function validateHash(miner, nonce, difficulty) {
-            // Encode the same way as Solidity: keccak256(abi.encodePacked(miner, nonce))
-            const encoded = ethers.utils.solidityPack(
-                ['address', 'uint256'],
-                [miner, nonce]
-            );
-            const hash = ethers.utils.keccak256(encoded);
-            
-            // Count leading zeros in hex (each hex char = 4 bits, so 2 chars = 1 byte = 8 bits)
-            const hashStr = hash.slice(2); // Remove '0x'
-            let leadingZeros = 0;
-            
-            for (let i = 0; i < hashStr.length; i++) {
-                const hexChar = hashStr[i];
-                if (hexChar === '0') {
-                    leadingZeros += 4;
-                } else {
-                    const num = parseInt(hexChar, 16);
-                    if (num < 2) leadingZeros += 3;
-                    else if (num < 4) leadingZeros += 2;
-                    else if (num < 8) leadingZeros += 1;
-                    break;
-                }
-            }
-            
-            return leadingZeros >= difficulty;
         }
 
         async function startMining() {
@@ -627,78 +587,95 @@
             }
 
             mining = true;
-            hashCount = 0;
-            startTime = Date.now();
+            attemptCount = 0;
             
             document.getElementById('mineBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'block';
             document.getElementById('stopBtn').disabled = false;
+            document.getElementById('mineBtn').classList.add('mining');
             
-            log('Mining started... Target: ' + currentDifficulty + ' leading zeros', 'warning');
-            log('Searching for valid nonce...', 'warning');
+            log('Mining started... Target difficulty: ' + currentDifficulty, 'warning');
+            log('Contract will validate PoW on-chain...', 'warning');
 
             try {
                 const provider = new ethers.providers.Web3Provider(window.ethereum);
                 const signer = provider.getSigner();
                 const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
 
-                const mineLoop = async () => {
-                    while (mining) {
-                        const nonce = Math.floor(Math.random() * 1000000000);
-                        hashCount++;
+                while (mining) {
+                    // Generate random nonce (larger range for better distribution)
+                    const nonce = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+                    attemptCount++;
+                    document.getElementById('hashcount').textContent = attemptCount;
+                    
+                    log('Attempt #' + attemptCount + ' - Nonce: ' + nonce, 'warning');
+                    
+                    try {
+                        // Submit directly to contract - let contract validate
+                        const tx = await contract.mine(nonce, { 
+                            gasLimit: 500000 
+                        });
                         
-                        // Update UI every 100 hashes
-                        if (hashCount % 100 === 0) {
-                            const elapsed = (Date.now() - startTime) / 1000;
-                            const rate = Math.floor(hashCount / elapsed);
-                            document.getElementById('hashrate').textContent = rate;
-                            document.getElementById('hashcount').textContent = hashCount;
+                        log('TX submitted: ' + tx.hash.slice(0, 20) + '...', 'warning');
+                        log('Waiting for confirmation...', 'warning');
+                        
+                        const receipt = await tx.wait();
+                        
+                        if (receipt.status === 1) {
+                            log('SUCCESS! Block mined! Gas: ' + receipt.gasUsed.toString(), 'success');
+                            log('Rewards added to unclaimed balance', 'success');
+                            mining = false;
+                            document.getElementById('mineBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                            document.getElementById('mineBtn').classList.remove('mining');
+                            await loadData();
+                            return;
+                        } else {
+                            log('TX failed - trying again...', 'error');
                         }
-
-                        // Validate hash locally first
-                        if (validateHash(account, nonce, currentDifficulty)) {
-                            log('Valid hash found! Nonce: ' + nonce, 'success');
-                            log('Submitting to blockchain...', 'warning');
-                            
-                            try {
-                                const tx = await contract.mine(nonce, { 
-                                    gasLimit: 500000 
-                                });
-                                log('TX sent: ' + tx.hash.slice(0, 16) + '...', 'warning');
-                                
-                                const receipt = await tx.wait();
-                                log('SUCCESS! Block mined. Gas used: ' + receipt.gasUsed.toString(), 'success');
-                                
-                                mining = false;
-                                document.getElementById('mineBtn').style.display = 'block';
-                                document.getElementById('stopBtn').style.display = 'none';
-                                await loadData();
-                                return;
-                            } catch (error) {
-                                log('TX failed: ' + error.message.substring(0, 80), 'error');
-                                if (error.message.includes('user rejected')) {
-                                    mining = false;
-                                    document.getElementById('mineBtn').style.display = 'block';
-                                    document.getElementById('stopBtn').style.display = 'none';
-                                    return;
-                                }
-                                // Continue mining if transaction failed
-                            }
+                        
+                    } catch (error) {
+                        if (error.message.includes('user rejected') || error.code === 4001) {
+                            log('Transaction rejected by user', 'error');
+                            mining = false;
+                            document.getElementById('mineBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                            document.getElementById('mineBtn').classList.remove('mining');
+                            return;
                         }
-
-                        // Small delay to prevent browser freeze
-                        if (hashCount % 1000 === 0) {
-                            await new Promise(resolve => setTimeout(resolve, 10));
+                        
+                        // Check specific errors
+                        if (error.message.includes('Invalid hash')) {
+                            log('Hash invalid - trying new nonce...', 'warning');
+                        } else if (error.message.includes('Mining too fast')) {
+                            log('Cooldown active - wait 10 seconds', 'warning');
+                            mining = false;
+                            document.getElementById('mineBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                            document.getElementById('mineBtn').classList.remove('mining');
+                            await loadData();
+                            return;
+                        } else if (error.message.includes('Hash already used')) {
+                            log('Hash collision - trying new nonce...', 'warning');
+                        } else {
+                            log('Error: ' + error.message.substring(0, 100), 'error');
                         }
+                        
+                        // Small delay between attempts
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
-                };
-
-                await mineLoop();
+                    
+                    // Safety: prevent infinite loop without user interaction
+                    if (attemptCount % 10 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
             } catch (error) {
                 log('ERROR: ' + error.message, 'error');
                 mining = false;
                 document.getElementById('mineBtn').style.display = 'block';
                 document.getElementById('stopBtn').style.display = 'none';
+                document.getElementById('mineBtn').classList.remove('mining');
             }
         }
 
@@ -706,6 +683,7 @@
             mining = false;
             document.getElementById('mineBtn').style.display = 'block';
             document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('mineBtn').classList.remove('mining');
             log('Mining stopped by user', 'warning');
         }
 
@@ -732,7 +710,6 @@
             }
         }
 
-        // Auto-connect if previously connected
         window.addEventListener('load', () => {
             if (window.ethereum && window.ethereum.selectedAddress) {
                 connectWallet();
