@@ -455,6 +455,13 @@
                 <button class="btn stop-btn" id="stopBtn" onclick="stopMining()" style="display:none;">⏹️ STOP MINING</button>
                 <button class="btn" id="claimBtn" onclick="claimRewards()" disabled>💰 CLAIM REWARDS</button>
             </div>
+            
+            <div style="margin-top: 15px; padding: 15px; background: rgba(255, 220, 0, 0.1); border-left: 3px solid #ffdc00;">
+                <small style="color: #ffdc00;">
+                    ⚠️ <strong>DEBUG MODE:</strong> Jika mining menemukan valid nonce tapi gagal submit, 
+                    kemungkinan masalah ada di smart contract. Cek console browser (F12) untuk detail error.
+                </small>
+            </div>
         </div>
 
         <div class="info-section">
@@ -799,18 +806,58 @@
                         log('🎲 Nonce: ' + nonce.toString(), 'info');
                         log('🔐 Hash: ' + hash.slice(0, 20) + '...', 'info');
                         log('⚡ Zeros: ' + leadingZeros, 'success');
+                        log('📦 Block: ' + currentBlockNumber, 'info');
+                        
+                        // Small delay to ensure block data is fresh
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
                         log('📤 Submitting to blockchain...', 'warning');
                         
                         try {
-                            // Estimate gas
-                            const gasEstimate = await contractWithSigner.estimateGas.mine(nonce);
-                            const gasLimit = gasEstimate.mul(150).div(100); // 50% buffer
+                            // Check cooldown before submitting
+                            const minerInfo = await contract.getMinerInfo(account);
+                            const now = Math.floor(Date.now() / 1000);
+                            const nextMineTime = minerInfo[3].toNumber();
                             
-                            log('⛽ Gas estimate: ' + gasEstimate.toString(), 'info');
+                            if (now < nextMineTime) {
+                                log('⏰ Cooldown still active, waiting ' + (nextMineTime - now) + 's...', 'warning');
+                                await new Promise(resolve => setTimeout(resolve, 3000));
+                                continue;
+                            }
                             
-                            // Submit transaction
+                            // Verify with contract first (read-only call)
+                            try {
+                                const [isValid, contractHash] = await contract.testNonce(nonce);
+                                if (!isValid) {
+                                    log('⚠️  Nonce invalid on-chain (block changed), skipping...', 'warning');
+                                    continue;
+                                }
+                                log('✓ Verified valid on-chain', 'info');
+                            } catch (verifyError) {
+                                log('⚠️  Verification failed: ' + verifyError.message.substring(0, 50), 'warning');
+                                continue;
+                            }
+                            
+                            // Try to estimate gas with fallback
+                            let gasLimit;
+                            try {
+                                const gasEstimate = await contractWithSigner.estimateGas.mine(nonce);
+                                gasLimit = gasEstimate.mul(200).div(100); // 100% buffer
+                                log('⛽ Gas estimate: ' + gasEstimate.toString(), 'info');
+                            } catch (gasError) {
+                                // If estimate fails, use fixed high gas limit
+                                gasLimit = ethers.BigNumber.from('500000'); // 500k gas
+                                log('⚠️  Using fixed gas limit: 500000', 'warning');
+                            }
+                            
+                            // Get current gas price
+                            const feeData = await provider.getFeeData();
+                            
+                            // Submit transaction with proper gas settings
                             const tx = await contractWithSigner.mine(nonce, { 
-                                gasLimit: gasLimit
+                                gasLimit: gasLimit,
+                                maxFeePerGas: feeData.maxFeePerGas,
+                                maxPriorityFeePerGas: feeData.maxPriorityFeePerGas
                             });
                             
                             log('📨 TX sent: ' + tx.hash.slice(0, 20) + '...', 'warning');
@@ -864,6 +911,14 @@
                             
                             if (txError.message.includes('Hash already used')) {
                                 log('⚠️  Hash collision - continuing...', 'warning');
+                                // Update block number to get fresh hashes
+                                currentBlockNumber = await provider.getBlockNumber();
+                                log('📦 Updated to block: ' + currentBlockNumber, 'info');
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                            } else if (txError.message.includes('cannot estimate gas')) {
+                                log('⚠️  Gas estimation failed - block may have changed', 'warning');
+                                currentBlockNumber = await provider.getBlockNumber();
+                                log('📦 Updated to block: ' + currentBlockNumber, 'info');
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                             } else {
                                 log('❌ TX Error: ' + txError.message.substring(0, 100), 'error');
